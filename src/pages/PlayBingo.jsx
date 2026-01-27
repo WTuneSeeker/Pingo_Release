@@ -146,7 +146,6 @@ export default function PlayBingo() {
   };
 
   const fetchParticipants = async (sId) => {
-    // We halen de data op, maar sorteren doen we later client-side
     const { data } = await supabase
       .from('session_participants')
       .select('*')
@@ -332,13 +331,13 @@ export default function PlayBingo() {
       const countA = a.marked_indices?.length || 0;
       const countB = b.marked_indices?.length || 0;
 
-      // 2. Bereken of ze Full Bingo hebben (25 vakjes)
+      // 2. Bereken of ze Full Bingo hebben
       const isFullA = countA === 25;
       const isFullB = countB === 25;
 
       // REGEL 1: Full Bingo wint ALTIJD
-      if (isFullA && !isFullB) return -1; // A boven B
-      if (!isFullA && isFullB) return 1;  // B boven A
+      if (isFullA && !isFullB) return -1;
+      if (!isFullA && isFullB) return 1;
 
       // 3. Bereken aantal Rijen (Bingo's) voor "Rows" modus
       if (gameMode === 'rows') {
@@ -350,13 +349,13 @@ export default function PlayBingo() {
         b.marked_indices?.forEach(idx => gridB[idx] = true);
         const bingosB = checkBingoRows(gridB);
 
-        // REGEL 2: Meer bingo-lijnen wint van minder lijnen (ook al heb je minder vakjes)
+        // REGEL 2: Meer bingo-lijnen wint
         if (bingosA !== bingosB) {
-          return bingosB - bingosA; // Hoogste bingo getal eerst
+          return bingosB - bingosA;
         }
       }
 
-      // REGEL 3: Als bingo gelijk is (of in 'full' mode zonder full bingo), wint meeste vakjes
+      // REGEL 3: Meeste vakjes
       return countB - countA;
     });
   }, [participants, gameMode]);
@@ -618,11 +617,11 @@ export default function PlayBingo() {
                         </span>
                       </div>
 
-                      {/* Kick Button */}
+                      {/* Kick Button (AANGEPAST: Pas zichtbaar bij hover) */}
                       {isHost && p.user_id !== currentUserIdState && (
                         <button 
                           onClick={() => kickParticipant(p.id, p.user_id)} 
-                          className={`p-1.5 rounded-lg transition-all opacity-0 group-hover:opacity-100 focus:opacity-100 ${hasSomeBingo ? 'text-white/70 hover:bg-white/20 hover:text-white' : 'text-gray-300 hover:bg-red-50 hover:text-red-500'}`}
+                          className={`p-1.5 rounded-lg transition-all duration-200 opacity-0 group-hover:opacity-100 focus:opacity-100 ${hasSomeBingo ? 'text-white/70 hover:bg-white/20 hover:text-white' : 'text-gray-300 hover:bg-red-50 hover:text-red-500'}`}
                           title="Verwijder speler"
                         >
                           <UserMinus size={14} />
