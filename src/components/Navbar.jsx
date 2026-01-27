@@ -5,22 +5,37 @@ import { LayoutDashboard, LogOut, Menu, X, Sparkles, Users, ArrowRight } from 'l
 
 export default function Navbar() {
   const [user, setUser] = useState(null);
+  const [username, setUsername] = useState(''); // State voor naam
   const [isOpen, setIsOpen] = useState(false);
   const [joinCode, setJoinCode] = useState('');
   const [loadingCode, setLoadingCode] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
+    // Check sessie bij laden
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null);
+      if (session?.user) fetchProfile(session.user.id);
     });
 
+    // Luister naar login/logout updates
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null);
+      if (session?.user) {
+        fetchProfile(session.user.id);
+      } else {
+        setUsername('');
+      }
     });
 
     return () => subscription.unsubscribe();
   }, []);
+
+  // Functie om de naam op te halen
+  const fetchProfile = async (userId) => {
+    const { data } = await supabase.from('profiles').select('username').eq('id', userId).single();
+    if (data) setUsername(data.username);
+  };
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -40,7 +55,6 @@ export default function Navbar() {
         .single();
 
       if (error || !data) {
-        // Melding in de console of als kleine melding onder het veld
         console.error("Sessie niet gevonden");
         return;
       }
@@ -73,7 +87,7 @@ export default function Navbar() {
           {/* Desktop Navigatie */}
           <div className="hidden md:flex items-center gap-6">
             
-            {/* JOIN CODE INPUT */}
+            {/* JOIN CODE INPUT - Breder gemaakt (w-60 focus:w-80) */}
             <form onSubmit={handleJoinSession} className="relative group">
               <div className="absolute left-4 top-1/2 -translate-y-1/2 text-orange-400">
                 <Users size={18} />
@@ -83,7 +97,7 @@ export default function Navbar() {
                 placeholder="JOIN CODE..."
                 value={joinCode}
                 onChange={(e) => setJoinCode(e.target.value)}
-                className="pl-11 pr-10 py-2.5 bg-gray-50 border-2 border-transparent rounded-2xl text-xs font-black tracking-widest focus:bg-white focus:border-orange-500 focus:ring-4 focus:ring-orange-100 outline-none transition-all w-40 focus:w-56"
+                className="pl-11 pr-10 py-2.5 bg-gray-50 border-2 border-transparent rounded-2xl text-xs font-black tracking-widest focus:bg-white focus:border-orange-500 focus:ring-4 focus:ring-orange-100 outline-none transition-all w-60 focus:w-80"
               />
               <button 
                 type="submit"
@@ -99,7 +113,7 @@ export default function Navbar() {
             </Link>
             
             {user ? (
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-4">
                 <Link 
                   to="/dashboard" 
                   className="flex items-center gap-2 bg-orange-50 text-orange-600 px-5 py-2.5 rounded-2xl font-black hover:bg-orange-100 transition shadow-sm text-sm"
@@ -107,9 +121,17 @@ export default function Navbar() {
                   <LayoutDashboard size={18} />
                   Dashboard
                 </Link>
+
+                {/* NAAM: Verplaatst naar naast de uitlog knop */}
+                <div className="hidden lg:flex flex-col items-end">
+                   <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest leading-none mb-0.5">Ingelogd als</span>
+                   <span className="text-xs font-black text-gray-900 leading-none truncate max-w-[150px]">{username || 'Laden...'}</span>
+                </div>
+
                 <button 
                   onClick={handleLogout}
-                  className="p-2.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-2xl transition-all"
+                  className="p-2.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-2xl transition-all border border-transparent hover:border-red-100"
+                  title="Uitloggen"
                 >
                   <LogOut size={20} />
                 </button>
@@ -144,7 +166,6 @@ export default function Navbar() {
       {/* Mobiele Navigatie */}
       {isOpen && (
         <div className="md:hidden bg-white border-t border-gray-50 p-4 space-y-4 animate-in slide-in-from-top-2">
-          {/* Mobiel Join Veld */}
           <form onSubmit={handleJoinSession} className="relative mb-6">
             <input 
               type="text"
@@ -167,6 +188,12 @@ export default function Navbar() {
           </Link>
           {user ? (
             <>
+              {/* Mobiele weergave van de naam */}
+              <div className="px-4 py-2 border-b border-gray-50 mb-2">
+                 <span className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest">Ingelogd als</span>
+                 <span className="block text-sm font-black text-gray-900">{username}</span>
+              </div>
+
               <Link 
                 to="/dashboard" 
                 className="block px-4 py-3 bg-orange-50 text-orange-600 font-black rounded-xl"

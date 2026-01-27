@@ -1,204 +1,319 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
-import { useNavigate } from 'react-router-dom';
-import { Plus, Save, Globe, Lock, AlertCircle, ChevronLeft, X } from 'lucide-react';
+import { 
+  ChevronLeft, Plus, Save, Globe, Lock, Loader2, X, AlertCircle, Sparkles, Lightbulb 
+} from 'lucide-react';
 
-export default function CreateBingo() {
+export default function Configurator() {
+  const { id } = useParams(); // Haalt ID uit URL voor Edit mode
   const navigate = useNavigate();
-  const [title, setTitle] = useState('');
-  const [items, setItems] = useState(new Array(24).fill(''));
-  const [isPublic, setIsPublic] = useState(false);
-  const [errorMessage, setErrorMessage] = useState('');
-  const [loading, setLoading] = useState(false);
   
-  const itemsEndRef = useRef(null);
-  const MAX_CHAR_LIMIT = 40;
+  // State
+  const [title, setTitle] = useState('');
+  const [isPublic, setIsPublic] = useState(false);
+  // Start met 24 lege vakjes, maar dit kan groeien/krimpen
+  const [items, setItems] = useState(Array(24).fill('')); 
+  
+  const [loading, setLoading] = useState(false);
+  const [pageLoading, setPageLoading] = useState(!!id);
+  const [errorMsg, setErrorMsg] = useState(''); 
 
+  // 1. DATA OPHALEN (Alleen als we in Edit mode zijn)
   useEffect(() => {
-    window.scrollTo(0, 0);
-  }, []);
+    if (!id) return;
 
-  const handleAddItem = () => {
-    setItems(prevItems => [...prevItems, '']);
-    setErrorMessage('');
-    setTimeout(() => {
-      itemsEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-    }, 100);
-  };
+    const fetchCardData = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('bingo_cards')
+          .select('*')
+          .eq('id', id)
+          .single();
 
-  const handleRemoveItem = (index) => {
-    if (items.length > 24) {
-      const newItems = items.filter((_, i) => i !== index);
-      setItems(newItems);
-    }
-  };
+        if (error) throw error;
 
-  const updateItemText = (index, val) => {
+        if (data) {
+          setTitle(data.title);
+          const loadedItems = data.items || [];
+          
+          // Zorg dat er visueel altijd minstens 24 vakjes zijn om mee te beginnen
+          if (loadedItems.length < 24) {
+             const filler = Array(24 - loadedItems.length).fill('');
+             setItems([...loadedItems, ...filler]);
+          } else {
+             setItems(loadedItems);
+          }
+          setIsPublic(data.is_public);
+        }
+      } catch (error) {
+        console.error("Fout:", error);
+        setErrorMsg("Kon kaart niet laden. Bestaat deze nog?");
+      } finally {
+        setPageLoading(false);
+      }
+    };
+
+    fetchCardData();
+  }, [id]);
+
+  // --- ACTIES ---
+
+  const handleItemChange = (index, value) => {
     const newItems = [...items];
-    newItems[index] = val;
+    newItems[index] = value;
     setItems(newItems);
   };
 
-  const handleSave = async (e) => {
-    e.preventDefault();
-    if (loading) return;
+  const addItem = () => {
+    setItems([...items, '']);
+  };
+
+  const removeItem = (indexToRemove) => {
+    setItems(items.filter((_, index) => index !== indexToRemove));
+  };
+
+  const handleSave = async () => {
+    setErrorMsg(''); // Reset error
     
-    setLoading(true);
-    setErrorMessage('');
-
-    const filteredItems = items.filter(item => item && item.trim() !== '');
-
+    // Validatie: Titel
     if (!title.trim()) {
-      setErrorMessage('Geef je kaart eerst een leuke titel!');
-      setLoading(false);
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+      setErrorMsg("Vul alsjeblieft een titel in.");
+      window.scrollTo(0,0);
+      return;
+    }
+    
+    // Validatie: Aantal items
+    const cleanItems = items.filter(i => i.trim() !== '');
+    if (cleanItems.length < 24) {
+      setErrorMsg(`Te weinig woorden! Je hebt er ${cleanItems.length}, maar je hebt er minimaal 24 nodig.`);
+      window.scrollTo(0,0);
       return;
     }
 
-    if (filteredItems.length < 24) {
-      setErrorMessage(`⚠️ Je hebt momenteel ${filteredItems.length} gevulde items. Minimaal 24 woorden vereist.`);
+    setLoading(true);
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (!user) {
       setLoading(false);
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-      return;
+      return navigate('/login');
     }
 
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error("Niet ingelogd");
+      let resultError;
+      const payload = {
+        title,
+        items: cleanItems,
+        is_public: isPublic,
+      };
 
-      const { error } = await supabase
-        .from('bingo_cards')
-        .insert([{
-          user_id: user.id,
-          title: title,
-          items: filteredItems,
-          is_public: isPublic
-        }]);
+      if (id) {
+        // --- UPDATE BESTAANDE KAART ---
+        const { error } = await supabase
+          .from('bingo_cards')
+          .update({ ...payload, updated_at: new Date() })
+          .eq('id', id)
+          .eq('user_id', user.id);
+        resultError = error;
+      } else {
+        // --- MAAK NIEUWE KAART ---
+        const { error } = await supabase
+          .from('bingo_cards')
+          .insert([{ user_id: user.id, ...payload }]);
+        resultError = error;
+      }
 
-      if (error) throw error;
-      navigate('/dashboard');
+      if (resultError) throw resultError;
+      
+      // Succes! Stuur gebruiker naar dashboard met groen bericht
+      navigate('/dashboard', { 
+        state: { success: id ? "Kaart succesvol bijgewerkt!" : "Nieuwe kaart aangemaakt!" } 
+      });
+
     } catch (error) {
-      setErrorMessage('Fout bij opslaan: ' + error.message);
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+      console.error("Error saving:", error);
+      setErrorMsg(`Opslaan mislukt: ${error.message || "Controleer je verbinding."}`);
+      window.scrollTo(0,0);
     } finally {
       setLoading(false);
     }
   };
 
-  return (
-    <div className="max-w-5xl mx-auto px-4 py-12">
-      <button 
-        onClick={() => navigate('/dashboard')}
-        className="flex items-center gap-2 text-gray-400 hover:text-orange-500 font-bold transition-colors mb-8 group"
-      >
-        <ChevronLeft className="group-hover:-translate-x-1 transition-transform" />
-        Terug naar Dashboard
-      </button>
+  if (pageLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="flex flex-col items-center gap-4">
+           <Loader2 className="animate-spin text-orange-500" size={48} />
+           <p className="text-gray-400 font-bold uppercase text-xs tracking-widest animate-pulse">Kaart laden...</p>
+        </div>
+      </div>
+    );
+  }
 
-      <div className="mb-10 text-center md:text-left">
-        <h1 className="text-5xl font-black text-gray-900 tracking-tight italic">Nieuwe <span className="text-orange-500">P</span>INGO</h1>
-        <p className="text-gray-400 mt-2 font-bold text-lg">Ontwerp je eigen unieke bingo-ervaring</p>
+  const validCount = items.filter(i => i.trim()).length;
+  const isEnough = validCount >= 24;
+
+  return (
+    <div className="min-h-screen bg-gray-50 pb-20 font-sans selection:bg-orange-100">
+      
+      {/* --- NIEUWE DONKERE HEADER --- */}
+      <div className="pt-8 px-6 pb-6">
+        <div className="max-w-6xl mx-auto bg-gray-900 rounded-[2.5rem] px-6 py-6 md:px-10 md:py-8 relative overflow-hidden shadow-2xl flex flex-col md:flex-row justify-between items-center gap-6">
+          
+          {/* Achtergrond Glow */}
+          <div className="absolute top-0 left-1/2 -translate-x-1/2 w-64 h-64 bg-orange-500 rounded-full blur-[120px] opacity-20 pointer-events-none"></div>
+
+          {/* Links: Back & Titel */}
+          <div className="relative z-10 flex items-center gap-4 w-full md:w-auto">
+             <button 
+               onClick={() => navigate('/dashboard')} 
+               className="p-2.5 bg-gray-800 text-gray-400 rounded-xl hover:text-white hover:bg-gray-700 transition-colors"
+             >
+               <ChevronLeft size={24} />
+             </button>
+             <div className="text-left">
+               <h2 className="text-xl md:text-3xl font-black italic uppercase text-white tracking-tight leading-none">
+                 {id ? 'Kaart Bewerken' : 'Nieuwe Maken'}
+               </h2>
+               <p className="text-gray-500 text-[10px] font-bold uppercase tracking-widest mt-1 flex items-center gap-1">
+                 <Sparkles size={10} className="text-orange-500"/> Pingo Studio
+               </p>
+             </div>
+          </div>
+
+          {/* Rechts: Status Indicator */}
+          <div className="relative z-10 flex items-center gap-3">
+             <div className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest border-2 transition-colors ${isEnough ? 'bg-green-500/10 border-green-500 text-green-500' : 'bg-gray-800 border-gray-700 text-gray-500'}`}>
+                {validCount} / 24+ Woorden
+             </div>
+          </div>
+        </div>
       </div>
 
-      {errorMessage && (
-        <div className="mb-8 p-5 bg-red-50 border-2 border-red-100 rounded-[2rem] flex items-center gap-4 text-red-600 font-black animate-in slide-in-from-top-4 duration-300">
-          <AlertCircle size={24} />
-          <p>{errorMessage}</p>
-        </div>
-      )}
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
+      <div className="max-w-6xl mx-auto p-4 sm:p-8 flex flex-col lg:flex-row gap-8">
         
-        {/* Settings Tab */}
-        <div className="lg:col-span-1">
-          <div className="bg-white p-8 rounded-[3rem] shadow-xl shadow-gray-100 border border-gray-50 space-y-8 sticky top-28">
-            <div>
-              <label className="block text-sm font-black mb-3 text-gray-400 uppercase tracking-widest ml-1">Titel</label>
+        {/* Linker Kant (Settings) */}
+        <div className="w-full lg:w-1/3 space-y-6">
+          
+          {/* FOUTMELDING BALK */}
+          {errorMsg && (
+            <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded-xl flex gap-3 animate-in slide-in-from-top-2 shadow-sm">
+              <AlertCircle className="text-red-500 shrink-0" />
+              <p className="text-red-700 text-sm font-bold">{errorMsg}</p>
+            </div>
+          )}
+
+          <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border-2 border-transparent hover:border-orange-100 transition-colors sticky top-8">
+            <h3 className="text-2xl font-black text-gray-900 uppercase italic leading-none mb-6">Instellingen</h3>
+
+            <div className="space-y-2 mb-6">
+              <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 ml-4">Titel van je kaart</label>
               <input 
-                type="text"
-                maxLength={50}
-                placeholder="Bijv. Familie Kerst Bingo"
-                className="w-full p-5 bg-gray-50 border-2 border-transparent rounded-[1.5rem] outline-none focus:ring-4 focus:ring-orange-100 focus:bg-white focus:border-orange-500 transition-all font-bold text-gray-800"
+                type="text" 
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
+                placeholder="Bijv. Familie Kerst Bingo"
+                className="w-full bg-gray-50 border-2 border-gray-100 rounded-2xl px-4 py-3.5 font-bold text-gray-700 focus:outline-none focus:border-orange-500 focus:ring-4 focus:ring-orange-100 transition-all placeholder:text-gray-300"
               />
             </div>
 
-            <div>
-              <label className="block text-sm font-black mb-3 text-gray-400 uppercase tracking-widest ml-1">Zichtbaarheid</label>
-              <div className="flex p-1 bg-gray-50 rounded-2xl border border-gray-100">
-                <button type="button" onClick={() => setIsPublic(false)} className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-bold transition-all ${!isPublic ? 'bg-white shadow-sm text-orange-600' : 'text-gray-400 hover:text-gray-600'}`}>
-                  <Lock size={18} /> Privé
+            <div className="space-y-2 mb-8">
+              <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 ml-4">Wie mag dit zien?</label>
+              <div className="flex bg-gray-50 p-1.5 rounded-2xl border-2 border-gray-100">
+                <button 
+                  onClick={() => setIsPublic(false)}
+                  className={`flex-1 py-3 rounded-xl text-xs font-black uppercase flex items-center justify-center gap-2 transition-all ${!isPublic ? 'bg-white text-orange-500 shadow-md transform scale-100' : 'text-gray-400 hover:text-gray-600'}`}
+                >
+                  <Lock size={14} /> Privé
                 </button>
-                <button type="button" onClick={() => setIsPublic(true)} className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-bold transition-all ${isPublic ? 'bg-white shadow-sm text-green-600' : 'text-gray-400 hover:text-gray-600'}`}>
-                  <Globe size={18} /> Publiek
+                <button 
+                  onClick={() => setIsPublic(true)}
+                  className={`flex-1 py-3 rounded-xl text-xs font-black uppercase flex items-center justify-center gap-2 transition-all ${isPublic ? 'bg-white text-orange-500 shadow-md transform scale-100' : 'text-gray-400 hover:text-gray-600'}`}
+                >
+                  <Globe size={14} /> Publiek
                 </button>
               </div>
             </div>
+            
+            {/* --- NIEUWE PRO TIP SECTIE --- */}
+            <div className="bg-gradient-to-br from-blue-50 to-indigo-50 p-6 rounded-3xl border border-blue-100 relative overflow-hidden mb-8 shadow-sm group hover:shadow-md transition-shadow">
+              
+              {/* Achtergrond decoratie */}
+              <div className="absolute -right-6 -top-6 text-blue-100/50 rotate-12 pointer-events-none group-hover:rotate-45 transition-transform duration-700">
+                 <Sparkles size={120} />
+              </div>
 
-            <button onClick={handleSave} disabled={loading} className="w-full bg-orange-500 text-white py-5 rounded-[2.5rem] font-black text-xl flex items-center justify-center gap-3 hover:bg-orange-600 transition shadow-2xl shadow-orange-100 active:scale-[0.98] disabled:opacity-50">
-              <Save size={24} /> {loading ? 'Bezig...' : 'Kaart Creëren'}
+              <div className="relative z-10 flex gap-4">
+                {/* Icoon Box */}
+                <div className="shrink-0 w-12 h-12 bg-white rounded-2xl flex items-center justify-center text-blue-500 shadow-sm border border-blue-100">
+                  <Lightbulb size={24} strokeWidth={2.5} className="group-hover:text-yellow-400 transition-colors" />
+                </div>
+
+                {/* Tekst */}
+                <div>
+                  <h4 className="text-blue-900 font-black italic uppercase text-lg mb-1">Pro Tip</h4>
+                  <p className="text-blue-700 text-xs font-bold leading-relaxed opacity-90">
+                    Voeg méér dan 24 woorden toe! Het spel kiest dan voor elke speler willekeurig 24 woorden uit jouw lijst.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <button 
+              onClick={handleSave}
+              disabled={loading}
+              className={`w-full text-white py-4 rounded-2xl font-black uppercase tracking-widest active:scale-95 transition-all shadow-lg flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed ${isEnough ? 'bg-orange-500 hover:bg-orange-600 shadow-orange-200' : 'bg-gray-400 hover:bg-gray-500 shadow-gray-200'}`}
+            >
+              {loading ? <Loader2 className="animate-spin" /> : <Save size={18} />}
+              {id ? 'Opslaan' : 'Aanmaken'}
             </button>
           </div>
         </div>
 
-        {/* Word List Tab */}
-        <div className="lg:col-span-2">
-          <div className="bg-white p-8 rounded-[3rem] shadow-xl shadow-gray-100 border border-gray-50">
-            <div className="flex justify-between items-center mb-6 px-2">
-              <div>
-                <h3 className="text-xl font-black text-gray-900 tracking-tight">Bingo Woorden</h3>
-                <p className="text-sm font-bold text-gray-400">Gebruik korte woorden voor het beste resultaat.</p>
-              </div>
-              <button type="button" onClick={handleAddItem} className="bg-orange-50 text-orange-600 px-5 py-3 rounded-2xl font-black text-sm flex items-center gap-2 hover:bg-orange-100 transition active:scale-95">
-                <Plus size={20} /> Toevoegen
+        {/* Rechter Kant (Items Grid) */}
+        <div className="w-full lg:w-2/3">
+          <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-gray-100 min-h-[80vh] flex flex-col">
+            <div className="mb-6">
+               <h2 className="text-xl font-black text-gray-900 uppercase italic">Bingo Pool</h2>
+               <p className="text-gray-400 text-[10px] font-bold uppercase tracking-widest">Vul de vakjes met jouw content</p>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-6">
+              {items.map((item, index) => (
+                <div key={index} className="relative group animate-in zoom-in duration-300">
+                  <div className="absolute top-3 left-4 text-[10px] font-black text-gray-300 select-none">#{index + 1}</div>
+                  
+                  {/* Delete knopje */}
+                  <button 
+                    onClick={() => removeItem(index)}
+                    className="absolute top-2 right-2 text-gray-300 hover:text-red-500 p-1.5 rounded-lg hover:bg-red-50 transition-all opacity-0 group-hover:opacity-100 focus:opacity-100"
+                    tabIndex={-1} 
+                  >
+                    <X size={14} strokeWidth={3} />
+                  </button>
+
+                  <textarea
+                    value={item}
+                    onChange={(e) => handleItemChange(index, e.target.value)}
+                    placeholder="..."
+                    className="w-full h-28 bg-gray-50 border-2 border-gray-100 rounded-2xl p-4 pt-7 text-center font-bold text-gray-800 focus:outline-none focus:border-orange-500 focus:bg-white focus:ring-4 focus:ring-orange-50 transition-all text-sm sm:text-base resize-none leading-tight flex items-center justify-center"
+                  />
+                </div>
+              ))}
+              
+              {/* Toevoegen knop */}
+              <button 
+                onClick={addItem}
+                className="w-full h-28 border-3 border-dashed border-gray-200 rounded-2xl flex flex-col items-center justify-center text-gray-300 hover:text-orange-500 hover:border-orange-300 hover:bg-orange-50 transition-all group"
+              >
+                <Plus size={32} className="group-hover:scale-110 transition-transform mb-1" />
+                <span className="text-[10px] font-black uppercase tracking-widest">Toevoegen</span>
               </button>
             </div>
-
-            <div className="p-2 bg-gray-50 rounded-[2.5rem] border border-gray-100">
-              {/* De 2 kolommen zijn terug op MD schermen en groter */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-4 p-4">
-                {items.map((item, index) => (
-                  <div key={index} className="flex flex-col gap-1 group animate-in slide-in-from-bottom-2 duration-200">
-                    <div className="flex gap-2 items-center relative pr-1">
-                      {/* Nummering - met flex-shrink-0 zodat hij nooit smaller wordt */}
-                      <div className="w-8 h-8 flex items-center justify-center bg-white rounded-lg text-[10px] font-black text-gray-300 border border-gray-100 flex-shrink-0 z-10">
-                        {index + 1}
-                      </div>
-
-                      {/* Invoerveld - met w-full zodat hij de rest van de ruimte pakt */}
-                      <input 
-                        maxLength={MAX_CHAR_LIMIT}
-                        className="w-full p-4 bg-white border-2 border-transparent rounded-2xl text-sm font-bold focus:ring-4 focus:ring-orange-100 focus:border-orange-500 outline-none transition-all shadow-sm z-0"
-                        value={item}
-                        onChange={(e) => updateItemText(index, e.target.value)}
-                        placeholder="Voor een naam in..."
-                      />
-
-                      {/* Verwijderknop - absolute positionering rechtsboven het inputveld om overlap te voorkomen */}
-                      {items.length > 24 && (
-                        <button 
-                          type="button" 
-                          onClick={() => handleRemoveItem(index)} 
-                          className="absolute -right-1 -top-1 bg-white border border-gray-100 text-gray-300 hover:text-red-500 hover:border-red-100 rounded-full p-1.5 shadow-sm transition-all z-20 opacity-0 group-hover:opacity-100 md:opacity-100"
-                        >
-                          <X size={14} />
-                        </button>
-                      )}
-                    </div>
-                    {/* Karakter teller */}
-                    <div className="flex justify-end pr-6">
-                       <span className={`text-[9px] font-black ${item.length >= MAX_CHAR_LIMIT ? 'text-orange-500' : 'text-gray-300'}`}>
-                         {item.length}/{MAX_CHAR_LIMIT}
-                       </span>
-                    </div>
-                  </div>
-                ))}
-                <div ref={itemsEndRef} className="h-2 w-full col-span-full" />
-              </div>
-            </div>
+            
           </div>
         </div>
+
       </div>
     </div>
   );

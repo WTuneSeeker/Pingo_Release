@@ -4,7 +4,7 @@ import { supabase } from '../supabaseClient';
 import { 
   ChevronLeft, Sparkles, Trophy, Share2, 
   Zap, Rocket, Crown, Flame, Star, Ghost, Gem, PartyPopper, 
-  Users, UserMinus, Copy, Check, Info, Grid3X3, Hash
+  Users, UserMinus, Copy, Check, Info, Grid3X3, Shuffle, X
 } from 'lucide-react';
 
 export default function PlayBingo() {
@@ -20,9 +20,12 @@ export default function PlayBingo() {
   const [gameMode, setGameMode] = useState('rows'); 
   const [errorMessage, setErrorMessage] = useState('');
   
+  // Modals & Overlays
   const [isKickedLocal, setIsKickedLocal] = useState(false);
-  const [copied, setCopied] = useState(false); // Voor de share knop
-  const [codeCopied, setCodeCopied] = useState(false); // Specifiek voor de navbar code
+  const [showShuffleConfirm, setShowShuffleConfirm] = useState(false);
+  
+  const [copied, setCopied] = useState(false);
+  const [codeCopied, setCodeCopied] = useState(false);
 
   const [session, setSession] = useState(null);
   const [participants, setParticipants] = useState([]);
@@ -48,7 +51,24 @@ export default function PlayBingo() {
     init();
   }, [id, sessionId]);
 
-  // 2. REALTIME LISTENER
+  // 2. HEARTBEAT ❤️ (NIEUW: Houdt je status 'Online')
+  useEffect(() => {
+    if (!sessionId) return;
+
+    // Elke 60 seconden sturen we een signaal naar de DB dat we nog actief zijn
+    const heartbeatInterval = setInterval(async () => {
+      if (myParticipantIdRef.current) {
+        await supabase
+          .from('session_participants')
+          .update({ updated_at: new Date().toISOString() })
+          .eq('id', myParticipantIdRef.current);
+      }
+    }, 60000); // 1 minuut
+
+    return () => clearInterval(heartbeatInterval);
+  }, [sessionId]);
+
+  // 3. REALTIME LISTENER
   useEffect(() => {
     if (!sessionId) return;
 
@@ -191,8 +211,27 @@ export default function PlayBingo() {
     }
   };
 
+  // --- SHUFFLE LOGICA ---
+  const handleShuffleClick = () => {
+    const markedCount = marked.filter(Boolean).length;
+    const realMarks = marked[12] ? markedCount - 1 : markedCount;
+
+    if (realMarks > 0) {
+      setShowShuffleConfirm(true);
+    } else {
+      executeShuffle();
+    }
+  };
+
+  const executeShuffle = () => {
+    if (card && card.items) {
+      generateGrid(card.items);
+      setShowShuffleConfirm(false); 
+    }
+  };
+
   const kickParticipant = async (pId, userId) => {
-    setParticipants(prev => prev.filter(p => p.id !== pId)); // Optimistic UI
+    setParticipants(prev => prev.filter(p => p.id !== pId));
     const updatedBanned = [...(session.banned_users || []), userId];
     await supabase.from('bingo_sessions').update({ banned_users: updatedBanned }).eq('id', sessionId);
     await supabase.from('session_participants').delete().eq('id', pId);
@@ -210,9 +249,11 @@ export default function PlayBingo() {
     const shuffled = [...items].sort(() => 0.5 - Math.random()).slice(0, 24);
     shuffled.splice(12, 0, "FREE SPACE");
     setGrid(shuffled);
+    
     const initial = new Array(25).fill(false);
     initial[12] = true;
     setMarked(initial);
+    setBingoCount(0);
   };
 
   const checkBingoRows = (currentMarked) => {
@@ -249,27 +290,47 @@ export default function PlayBingo() {
   const getBranding = (rowCount, isFull, currentMode) => {
     const titles = {
       0: { title: "PINGO", icon: <Sparkles size={24} /> },
-      1: { title: "BINGO!", icon: <Trophy size={24} />, color: "bg-orange-500 text-white shadow-xl scale-105 border-orange-400" },
-      2: { title: "DUBBEL!", icon: <Zap size={24} />, color: "bg-orange-600 text-white shadow-xl scale-105 border-orange-500" },
-      3: { title: "TRIPPEL!", icon: <Rocket size={24} />, color: "bg-red-500 text-white shadow-xl scale-105 border-red-400" },
-      4: { title: "QUADRA!", icon: <Flame size={24} />, color: "bg-red-600 text-white shadow-xl scale-105 border-red-500" },
-      5: { title: "SUPER!", icon: <Star size={24} />, color: "bg-purple-500 text-white shadow-xl scale-105 border-purple-400" },
-      6: { title: "ULTRA!", icon: <Sparkles size={24} />, color: "bg-purple-600 text-white shadow-xl scale-105 border-purple-500" },
-      7: { title: "HYPER!", icon: <Zap size={24} />, color: "bg-indigo-500 text-white shadow-xl scale-105 border-indigo-400" },
-      8: { title: "INSANE!", icon: <Ghost size={24} />, color: "bg-indigo-600 text-white shadow-xl scale-105 border-indigo-500" },
-      9: { title: "GODLY!", icon: <Crown size={24} />, color: "bg-yellow-400 text-black shadow-xl scale-105 border-yellow-300" },
-      10: { title: "MYSTICAL!", icon: <Gem size={24} />, color: "bg-pink-500 text-white shadow-xl scale-105 border-pink-400" },
-      11: { title: "CELESTIAL!", icon: <PartyPopper size={24} />, color: "bg-pink-600 text-white shadow-xl scale-105 border-pink-500" },
+      1: { title: "BINGO!", icon: <Trophy size={24} />, color: "bg-orange-500 text-white shadow-xl border-orange-400" },
+      2: { title: "DUBBEL!", icon: <Zap size={24} />, color: "bg-orange-600 text-white shadow-xl border-orange-500" },
+      3: { title: "TRIPPEL!", icon: <Rocket size={24} />, color: "bg-red-500 text-white shadow-xl border-red-400" },
+      4: { title: "QUADRA!", icon: <Flame size={24} />, color: "bg-red-600 text-white shadow-xl border-red-500" },
+      5: { title: "SUPER!", icon: <Star size={24} />, color: "bg-purple-500 text-white shadow-xl border-purple-400" },
+      6: { title: "ULTRA!", icon: <Sparkles size={24} />, color: "bg-purple-600 text-white shadow-xl border-purple-500" },
+      7: { title: "HYPER!", icon: <Zap size={24} />, color: "bg-indigo-500 text-white shadow-xl border-indigo-400" },
+      8: { title: "INSANE!", icon: <Ghost size={24} />, color: "bg-indigo-600 text-white shadow-xl border-indigo-500" },
+      9: { title: "GODLY!", icon: <Crown size={24} />, color: "bg-yellow-400 text-black shadow-xl border-yellow-300" },
+      10: { title: "MYSTICAL!", icon: <Gem size={24} />, color: "bg-pink-500 text-white shadow-xl border-pink-400" },
+      11: { title: "CELESTIAL!", icon: <PartyPopper size={24} />, color: "bg-pink-600 text-white shadow-xl border-pink-500" },
       12: { title: "FULL BINGO!", icon: <Crown size={24} className="text-orange-500" />, color: "bg-black border-2 border-orange-500 text-orange-500 shadow-[0_0_30px_rgba(249,115,22,0.8)] animate-pulse scale-110" }
     };
 
+    const lobbyColors = {
+      1: "bg-orange-500 border-orange-400",
+      2: "bg-orange-600 border-orange-500",
+      3: "bg-red-500 border-red-400",
+      4: "bg-red-600 border-red-500",
+      5: "bg-purple-500 border-purple-400",
+      6: "bg-purple-600 border-purple-500",
+      7: "bg-indigo-500 border-indigo-400",
+      8: "bg-indigo-600 border-indigo-500",
+      9: "bg-yellow-400 border-yellow-300 text-black",
+      10: "bg-pink-500 border-pink-400",
+      11: "bg-pink-600 border-pink-500",
+      12: "bg-gray-900 border-orange-500 shadow-[0_0_15px_rgba(249,115,22,0.4)]"
+    };
+
     if (currentMode === 'full') {
-        if (isFull) return titles[12];
-        return { title: "SPELEND..", icon: <Grid3X3 size={16} className="opacity-50"/>, color: "bg-gray-50 border-gray-100" };
+        if (isFull) return { ...titles[12], lobbyColor: lobbyColors[12] };
+        return { title: "SPELEND..", icon: <Grid3X3 size={16} className="opacity-50"/>, color: "bg-gray-50 border-gray-100", lobbyColor: "bg-white border-gray-50" };
     }
 
-    if (isFull) return titles[12];
-    return titles[Math.min(rowCount, 11)] || titles[0];
+    const level = Math.min(rowCount, 12);
+    if (isFull) return { ...titles[12], lobbyColor: lobbyColors[12] };
+    
+    return { 
+      ...titles[level] || titles[0], 
+      lobbyColor: lobbyColors[level] || "bg-white border-gray-50"
+    };
   };
 
   const soloBranding = getBranding(bingoCount, marked.every(m => m), 'rows');
@@ -290,61 +351,101 @@ export default function PlayBingo() {
         </div>
       )}
 
-      {/* NAVBAR */}
-      <div className="bg-white border-b py-4 mb-8 sticky top-0 z-50 shadow-sm px-6">
-        <div className="max-w-7xl mx-auto flex justify-between items-center">
-          <button onClick={() => navigate(-1)}><ChevronLeft size={28} /></button>
-          <h2 className="text-xl font-black italic uppercase"><span className="text-orange-500">P</span>ingo Play</h2>
-          
-          <div className="flex gap-3 items-center">
-            
-            {/* LOBBY CODE (ALLEEN IN SESSIE) */}
-            {sessionId && (
-              <button 
-                onClick={() => { navigator.clipboard.writeText(session?.join_code); setCodeCopied(true); setTimeout(() => setCodeCopied(false), 2000); }}
-                className="bg-gray-100 border-2 border-gray-200 text-gray-600 px-3 py-1.5 rounded-xl font-black text-xs flex items-center gap-2 hover:bg-orange-50 hover:border-orange-200 hover:text-orange-500 transition-all active:scale-95"
-              >
-                <span className="text-[10px] opacity-50 uppercase tracking-wider hidden sm:inline">Code:</span>
-                <span className="text-sm font-black">{session?.join_code}</span>
-                {codeCopied ? <Check size={14} className="text-green-500"/> : <Copy size={14} />}
-              </button>
-            )}
-
-            {/* GROEP BUTTON (ALLEEN IN SOLO) */}
-            {!sessionId && (
-              <button onClick={startGroupSession} className="bg-orange-50 text-orange-600 px-4 py-2 rounded-xl font-black text-xs flex items-center gap-2 hover:bg-orange-100 transition shadow-sm border border-orange-100">
-                <Users size={18} /> Groep
-              </button>
-            )}
-            
-            <button onClick={() => { navigator.clipboard.writeText(window.location.href); setCopied(true); setTimeout(() => setCopied(false), 2000); }}>
-              {copied ? <Check className="text-green-500" /> : <Share2 className="text-gray-400" />}
-            </button>
+      {/* SHUFFLE POPUP */}
+      {showShuffleConfirm && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-[2.5rem] p-8 max-w-sm w-full text-center border-4 border-orange-500 shadow-2xl animate-in zoom-in-95 duration-200">
+            <Shuffle size={48} className="text-orange-500 mx-auto mb-4" />
+            <h2 className="text-2xl font-black uppercase italic mb-2 text-gray-900">Kaart Husselen?</h2>
+            <p className="text-gray-400 font-bold uppercase text-xs tracking-widest mb-8 leading-relaxed">
+              Let op: Als je nu husselt, verlies je je aangekruiste vakjes en begin je opnieuw!
+            </p>
+            <div className="flex gap-3">
+              <button onClick={() => setShowShuffleConfirm(false)} className="flex-1 py-3 rounded-xl font-black text-xs uppercase bg-gray-100 text-gray-500 hover:bg-gray-200 transition-colors">Annuleren</button>
+              <button onClick={executeShuffle} className="flex-1 py-3 rounded-xl font-black text-xs uppercase bg-orange-500 text-white hover:bg-orange-600 transition-colors shadow-lg shadow-orange-200">Ja, Husselen</button>
+            </div>
           </div>
+        </div>
+      )}
+
+      {/* --- HEADER WRAPPER --- */}
+      <div className="pt-8 px-6 pb-6 relative z-50">
+        <div className="max-w-6xl mx-auto relative group">
+          
+          {/* 1. DE HEADER BALK */}
+          <div className="relative z-20 bg-gray-900 rounded-[2.5rem] px-6 py-6 md:px-10 md:py-8 shadow-2xl flex flex-col md:flex-row justify-between items-center gap-6 overflow-hidden">
+            
+            {/* Achtergrond Glow */}
+            <div className="absolute top-0 left-1/2 -translate-x-1/2 w-64 h-64 bg-orange-500 rounded-full blur-[120px] opacity-20 pointer-events-none"></div>
+
+            {/* Links */}
+            <div className="relative z-10 flex items-center gap-4 w-full md:w-auto">
+               <button onClick={() => navigate(-1)} className="p-2 bg-gray-800 text-gray-400 rounded-xl hover:text-white hover:bg-gray-700 transition-colors">
+                 <ChevronLeft size={24} />
+               </button>
+               <div className="text-left">
+                 <h2 className="text-xl md:text-3xl font-black italic uppercase text-white tracking-tight leading-none">
+                   {card?.title || <span className="animate-pulse">Laden...</span>}
+                 </h2>
+                 <p className="text-gray-500 text-[10px] font-bold uppercase tracking-widest mt-1">
+                   <span className="text-orange-500">P</span>ingo Play Room
+                 </p>
+               </div>
+            </div>
+
+            {/* Rechts */}
+            <div className="relative z-10 flex items-center gap-3 w-full md:w-auto justify-end">
+              {sessionId && (
+                <button 
+                  onClick={() => { navigator.clipboard.writeText(session?.join_code); setCodeCopied(true); setTimeout(() => setCodeCopied(false), 2000); }}
+                  className="bg-gray-800 border border-gray-700 text-gray-300 px-4 py-2 rounded-xl font-black text-xs flex items-center gap-2 hover:border-orange-500 hover:text-white transition-all active:scale-95 group"
+                >
+                  <span className="text-[10px] opacity-50 uppercase tracking-wider hidden sm:inline group-hover:text-orange-500 transition-colors">Code:</span>
+                  <span className="text-sm font-black text-white">{session?.join_code}</span>
+                  {codeCopied ? <Check size={14} className="text-green-500"/> : <Copy size={14} className="group-hover:text-orange-500 transition-colors" />}
+                </button>
+              )}
+              {!sessionId && (
+                <button onClick={startGroupSession} className="bg-orange-500 text-white px-5 py-2.5 rounded-xl font-black text-xs flex items-center gap-2 hover:bg-orange-600 transition shadow-lg shadow-orange-900/20 active:scale-95">
+                  <Users size={18} /> <span className="hidden sm:inline">Start Groep</span>
+                </button>
+              )}
+              <button onClick={() => { navigator.clipboard.writeText(window.location.href); setCopied(true); setTimeout(() => setCopied(false), 2000); }} className="p-2.5 bg-gray-800 text-gray-400 rounded-xl hover:text-white hover:bg-gray-700 transition-colors">
+                {copied ? <Check size={20} className="text-green-500" /> : <Share2 size={20} />}
+              </button>
+            </div>
+          </div>
+
+          {/* 2. DE SLIDING NOTIFICATIE */}
+          <div className={`
+              absolute left-0 right-0 z-10 w-full flex justify-center pointer-events-none
+              transition-all duration-700 ease-[cubic-bezier(0.34,1.56,0.64,1)] 
+              ${!sessionId && bingoCount > 0 
+                  ? 'top-full -translate-y-5 opacity-100' 
+                  : 'top-full -translate-y-[150%] opacity-0' 
+               }
+          `}>
+             <div className={`
+                w-[90%] md:w-auto min-w-[300px] px-8 pt-10 pb-3 rounded-b-3xl rounded-t-lg shadow-2xl border-2 border-t-0
+                flex items-center justify-center gap-4 pointer-events-auto
+                ${soloBranding.color || 'bg-orange-500 text-white border-orange-600'}
+             `}>
+                <div className="animate-bounce">{soloBranding.icon}</div>
+                <span className="text-2xl font-black italic uppercase tracking-widest drop-shadow-sm">{soloBranding.title}</span>
+                <div className="animate-bounce delay-75">{soloBranding.icon}</div>
+             </div>
+          </div>
+
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-4 flex flex-col lg:flex-row items-center lg:items-start justify-center gap-12">
+      <div className="max-w-7xl mx-auto px-4 flex flex-col lg:flex-row items-center lg:items-start justify-center gap-12 mt-4">
         <div className="flex-1 w-full max-w-[600px] flex flex-col items-center">
-          <div className="text-center mb-8 w-full">
-            <h1 className="text-4xl font-black text-gray-900 italic uppercase mb-4 tracking-tighter leading-none">{card?.title}</h1>
-            
-            {/* --- SOLO BINGO POPUP BALK --- */}
-            {!sessionId && bingoCount > 0 && (
-              <div className="w-full mb-6 animate-in zoom-in slide-in-from-top-4 duration-500">
-                <div className={`p-5 rounded-3xl flex items-center justify-center gap-4 shadow-2xl transition-all duration-300 border-2 ${soloBranding.color || 'bg-orange-500 text-white border-orange-400'}`}>
-                   <div className="animate-bounce">{soloBranding.icon}</div>
-                   <span className="text-3xl font-black tracking-widest uppercase italic leading-none">{soloBranding.title}</span>
-                   <div className="animate-bounce delay-75">{soloBranding.icon}</div>
-                </div>
-              </div>
-            )}
-
+          
+          <div className="text-center mb-6 w-full">
             {/* MULTIPLAYER CONTROLS */}
             {sessionId && (
               <div className="flex flex-col items-center gap-6">
-                
-                {/* GAME MODE SWITCHER */}
                 <div className="w-full">
                   {isHost ? (
                     <div className="flex justify-center gap-3">
@@ -367,23 +468,68 @@ export default function PlayBingo() {
             )}
           </div>
 
+          {/* --- SHUFFLE BAR --- */}
+          <div className="w-full flex justify-between items-end mb-3 px-2">
+            <div className="flex items-center gap-2 text-gray-400">
+               <span className="text-[10px] font-black uppercase tracking-widest bg-gray-100 px-2 py-1 rounded-lg">
+                 {marked.filter(Boolean).length - 1}/24
+               </span>
+            </div>
+            
+            <button 
+              onClick={handleShuffleClick} 
+              className="group flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-gray-400 hover:text-orange-500 transition-colors"
+            >
+              <Shuffle size={14} className="group-hover:rotate-180 transition-transform duration-500" />
+              Kaart Husselen
+            </button>
+          </div>
+
           <div className="grid grid-cols-5 gap-2 sm:gap-4 w-full">
-            {grid.map((text, index) => (
-              <button key={index} onClick={() => toggleTile(index)} className={`relative aspect-square flex items-center justify-center p-2 text-center rounded-2xl transition-all border-2 font-black uppercase ${index === 12 || marked[index] ? 'bg-orange-500 text-white border-orange-400 scale-95 shadow-inner' : 'bg-white text-gray-800 border-gray-100 hover:border-orange-200'}`}>
-                <span className={`leading-tight tracking-tighter line-clamp-3 ${index === 12 ? 'text-[8px] sm:text-[10px]' : 'text-[9px] sm:text-[13px]'}`}>{index === 12 ? "PINGO FREE" : text}</span>
-              </button>
-            ))}
+            {grid.map((text, index) => {
+              const isLong = text && text.length > 25;
+              const isVeryLong = text && text.length > 40;
+
+              return (
+                <button 
+                  key={index} 
+                  onClick={() => toggleTile(index)} 
+                  className={`relative aspect-square flex items-center justify-center p-1 sm:p-2 text-center rounded-2xl transition-all border-2 font-black uppercase overflow-hidden ${index === 12 || marked[index] ? 'bg-orange-500 text-white border-orange-400 scale-95 shadow-inner' : 'bg-white text-gray-800 border-gray-100 hover:border-orange-200'}`}
+                >
+                  <span className={`leading-[1.1] tracking-tight break-words hyphens-auto w-full select-none 
+                    ${index === 12 
+                      ? 'text-[8px] sm:text-[10px]' 
+                      : isVeryLong 
+                        ? 'text-[7px] sm:text-[9px]' 
+                        : isLong 
+                          ? 'text-[8px] sm:text-[10px]' 
+                          : 'text-[9px] sm:text-xs'
+                    }`}
+                  >
+                    {index === 12 ? "PINGO FREE" : text}
+                  </span>
+                </button>
+              );
+            })}
           </div>
         </div>
 
         {/* LOBBY */}
         {sessionId && (
-          <div className="w-full lg:w-80 shrink-0">
-            <div className="bg-white rounded-[2.5rem] p-6 shadow-2xl border border-orange-50 sticky top-28 overflow-visible">
-              <h3 className="text-xl font-black text-gray-900 flex items-center gap-2 italic uppercase mb-6"><Users className="text-orange-500" /> Lobby ({participants.length})</h3>
+          <div className="w-full lg:w-96 shrink-0 animate-in slide-in-from-right duration-700">
+            <div className="bg-white/80 backdrop-blur-xl rounded-[2.5rem] p-6 shadow-2xl border border-white/50 sticky top-32">
               
-              <div className="space-y-4 max-h-[60vh] overflow-y-auto overflow-x-visible no-scrollbar pt-6 px-1" style={{ scrollbarWidth: 'none' }}>
-                <style>{`.no-scrollbar::-webkit-scrollbar { display: none; }`}</style>
+              {/* Header */}
+              <div className="flex items-center justify-between mb-6 pl-2">
+                 <h3 className="text-xl font-black text-gray-900 flex items-center gap-3 italic uppercase">
+                   <Users className="text-orange-500" size={24} /> 
+                   Lobby <span className="bg-orange-100 text-orange-600 px-2 py-0.5 rounded-lg text-sm not-italic ml-1">{participants.length}</span>
+                 </h3>
+              </div>
+              
+              {/* Scroll Container */}
+              <div className="space-y-3 max-h-[60vh] overflow-y-auto p-4 -mx-4 custom-scrollbar" style={{ scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 transparent' }}>
+                <style>{`.custom-scrollbar::-webkit-scrollbar { width: 4px; } .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }`}</style>
                 {participants.map((p, i) => {
                   const pMarkedCount = p.marked_indices?.length || 0;
                   const pIsFull = pMarkedCount === 25;
@@ -393,30 +539,67 @@ export default function PlayBingo() {
                   const pRowCount = checkBingoRows(tempGrid);
                   
                   const pBranding = getBranding(pRowCount, pIsFull, gameMode);
-                  const shouldPing = (gameMode === 'rows' && pRowCount > 0) || pIsFull;
+                  const hasSomeBingo = (gameMode === 'rows' && pRowCount > 0) || pIsFull;
 
                   return (
-                    <div key={i} className={`relative flex flex-col p-4 rounded-3xl border-2 transition-all duration-500 ${shouldPing ? 'ring-2 ring-orange-200 shadow-lg scale-[1.02]' : ''} ${pBranding.color || (shouldPing ? 'bg-orange-500 border-orange-400 text-white' : 'bg-gray-50 border-transparent shadow-sm')}`}>
+                    <div key={i} className={`group relative flex items-center gap-4 p-3 rounded-2xl border-2 transition-all duration-300 
+                        ${pIsFull 
+                            ? `${pBranding.lobbyColor} scale-[1.03] z-10` // FULL BINGO (Dark Mode Style)
+                            : hasSomeBingo
+                                ? `${pBranding.lobbyColor} text-white shadow-md scale-[1.02]` // GEWONE BINGO (Kleur van de rank)
+                                : 'bg-white border-gray-50 hover:border-orange-100 hover:shadow-md' // GEEN BINGO (Wit)
+                        }
+                    `}>
                       
-                      <div className={`absolute -top-2 -right-2 px-3 py-1 rounded-full font-black text-[10px] border shadow-md z-[60] ${pIsFull ? 'bg-orange-600 text-white border-orange-400' : 'bg-white text-orange-500 border-orange-100'}`}>
-                        {(pMarkedCount > 0 ? pMarkedCount - 1 : 0)}/24
-                      </div>
-                      
-                      <div className="flex items-center gap-3 overflow-visible text-left">
-                        <div className="relative flex-shrink-0">
-                          <div className={`w-12 h-12 rounded-full flex items-center justify-center text-sm font-black shadow-sm ${pIsFull ? 'bg-orange-500 text-black' : 'bg-white text-orange-500 border border-orange-50'}`}>{p.user_name?.charAt(0).toUpperCase()}</div>
-                          {p.user_id === session?.host_id && <div className="absolute -top-1 -right-1 bg-yellow-400 text-white p-1 rounded-full border-2 border-white shadow-md z-40"><Crown size={12} fill="currentColor" /></div>}
+                      {/* Avatar */}
+                      <div className="relative shrink-0">
+                        <div className={`w-10 h-10 rounded-full flex items-center justify-center text-xs font-black shadow-sm 
+                            ${pIsFull 
+                                ? 'bg-orange-500 text-white' 
+                                : hasSomeBingo 
+                                    ? 'bg-white/20 text-white backdrop-blur-sm' 
+                                    : 'bg-gray-100 text-gray-500 group-hover:bg-orange-50 group-hover:text-orange-500 transition-colors'
+                            }
+                        `}>
+                          {p.user_name?.charAt(0).toUpperCase()}
                         </div>
-                        <div className="flex flex-col flex-1 overflow-hidden">
-                          <span className={`font-black text-xs uppercase truncate flex items-center gap-1.5 ${shouldPing ? 'text-white' : 'text-gray-700'}`}>{p.user_name}</span>
-                          <span className={`text-[10px] font-black uppercase tracking-widest truncate flex items-center gap-1 ${shouldPing ? 'text-orange-100' : 'text-orange-500'}`}>
-                             {pBranding.icon} {pBranding.title}
-                          </span>
-                        </div>
-                        {isHost && p.user_id !== currentUserIdState && (
-                          <button onClick={() => kickParticipant(p.id, p.user_id)} className="p-1.5 hover:bg-red-500 hover:text-white rounded-lg text-gray-300 transition-all flex-shrink-0"><UserMinus size={16} /></button>
+                        {p.user_id === session?.host_id && (
+                          <div className="absolute -top-1 -right-1 bg-yellow-400 text-yellow-900 p-0.5 rounded-full border-2 border-white shadow-sm z-10">
+                            <Crown size={10} fill="currentColor" />
+                          </div>
                         )}
                       </div>
+
+                      {/* Info */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex justify-between items-center mb-0.5">
+                           <span className={`font-black text-xs uppercase truncate ${pIsFull ? 'text-orange-500' : (hasSomeBingo ? 'text-white' : 'text-gray-700')}`}>
+                               {p.user_name}
+                           </span>
+                           {/* Score Badge */}
+                           <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-md ${pIsFull ? 'bg-orange-500 text-white' : (hasSomeBingo ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-400')}`}>
+                             {(pMarkedCount > 0 ? pMarkedCount - 1 : 0)}/24
+                           </span>
+                        </div>
+                        
+                        {/* Status Text */}
+                        <span className={`text-[9px] font-black uppercase tracking-widest truncate flex items-center gap-1 ${pIsFull ? 'text-orange-400 animate-pulse' : (hasSomeBingo ? 'text-white/90' : 'text-gray-300 group-hover:text-orange-400 transition-colors')}`}>
+                           {hasSomeBingo ? (
+                               <>{pBranding.icon} {pBranding.title}</>
+                           ) : 'Spelend...'}
+                        </span>
+                      </div>
+
+                      {/* Kick Button */}
+                      {isHost && p.user_id !== currentUserIdState && (
+                        <button 
+                          onClick={() => kickParticipant(p.id, p.user_id)} 
+                          className={`p-1.5 rounded-lg transition-all opacity-0 group-hover:opacity-100 focus:opacity-100 ${hasSomeBingo ? 'text-white/70 hover:bg-white/20 hover:text-white' : 'text-gray-300 hover:bg-red-50 hover:text-red-500'}`}
+                          title="Verwijder speler"
+                        >
+                          <UserMinus size={14} />
+                        </button>
+                      )}
                     </div>
                   );
                 })}

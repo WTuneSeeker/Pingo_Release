@@ -1,142 +1,310 @@
 import { useEffect, useState } from 'react';
-import { supabase } from '../supabaseClient';
-import { Globe, Play, Search, Sparkles, User, List } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { supabase } from '../supabaseClient';
+import { 
+  Search, Sparkles, TrendingUp, Grid3X3, Users, Loader2, Clock, Eye, Plus, Palette 
+} from 'lucide-react';
 
 export default function Community() {
-  const [cards, setCards] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [newestCards, setNewestCards] = useState([]);
+  const [popularCards, setPopularCards] = useState([]);
+  const [searchResults, setSearchResults] = useState([]);
+  
   const [searchTerm, setSearchTerm] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [searching, setSearching] = useState(false);
   const navigate = useNavigate();
 
+  // 1. Initialisatie
   useEffect(() => {
-    fetchPublicCards();
+    fetchAllData();
   }, []);
 
-  const fetchPublicCards = async () => {
+  const fetchAllData = async () => {
     setLoading(true);
     try {
-      const { data, error } = await supabase
+      // A. Haal de 3 NIEUWSTE kaarten op + Username
+      const { data: newResult } = await supabase
         .from('bingo_cards')
-        .select('*')
+        .select('*, profiles(username)')
         .eq('is_public', true)
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: false })
+        .limit(3);
+      
+      if (newResult) setNewestCards(newResult);
 
-      if (error) throw error;
-      setCards(data || []);
+      // B. Haal de POPULAIRSTE kaarten op + Username
+      const { data: popResult } = await supabase
+        .from('bingo_cards')
+        .select('*, profiles(username)')
+        .eq('is_public', true)
+        .order('play_count', { ascending: false }) 
+        .limit(6);
+
+      if (popResult) setPopularCards(popResult);
+
     } catch (error) {
-      console.error('Fout bij ophalen community kaarten:', error.message);
+      console.error("Fout bij laden data:", error);
     } finally {
       setLoading(false);
     }
   };
 
-  // Filter de kaarten op basis van de zoekterm
-  const filteredCards = cards.filter(card => 
-    card.title.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  // 2. Klik Handler
+  const handleCardClick = async (cardId) => {
+    try {
+      await supabase.rpc('increment_play_count', { card_id: cardId });
+    } catch (err) {
+      console.error("Kon play count niet updaten", err);
+    }
+    navigate(`/play/${cardId}`);
+  };
 
-  if (loading) return (
-    <div className="p-20 text-center font-black text-orange-500 animate-pulse text-2xl tracking-tighter italic uppercase">
-      De PINGO community wordt geladen...
+  // 3. Zoekfunctie
+  const handleSearch = async (term) => {
+    setSearchTerm(term);
+    
+    if (term.length < 2) {
+      setSearchResults([]);
+      return;
+    }
+
+    setSearching(true);
+    const { data } = await supabase
+      .from('bingo_cards')
+      .select('*, profiles(username)')
+      .eq('is_public', true)
+      .ilike('title', `%${term}%`)
+      .order('play_count', { ascending: false }) 
+      .limit(20);
+
+    if (data) setSearchResults(data);
+    setSearching(false);
+  };
+
+  // --- ANIMEER LIJST GENERATOR ---
+  const marqueeList = popularCards.length > 0 
+    ? (popularCards.length < 4 
+        ? [...popularCards, ...popularCards, ...popularCards, ...popularCards, ...popularCards, ...popularCards] 
+        : [...popularCards, ...popularCards, ...popularCards])
+    : [];
+
+  // --- COMPONENTEN ---
+
+  const BingoCardItem = ({ card, type, className = "" }) => (
+    <div 
+      onClick={() => handleCardClick(card.id)}
+      className={`group bg-white rounded-[2rem] border-2 border-transparent hover:border-orange-200 shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden cursor-pointer flex flex-col relative shrink-0 ${className}`}
+    >
+      {/* --- TOP RIGHT: KLIK TELLER & BADGES --- */}
+      <div className="absolute top-4 right-4 z-10 flex items-center gap-2">
+        
+        {/* Play Count */}
+        <div className="bg-white/90 backdrop-blur-sm border border-gray-100 text-gray-400 px-3 py-1 rounded-full text-[10px] font-black flex items-center gap-1.5 shadow-sm group-hover:text-orange-500 transition-colors">
+          <Eye size={12} /> {card.play_count || 0}
+        </div>
+
+        {/* Badges */}
+        {type === 'new' && (
+          <div className="bg-blue-100 text-blue-600 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest flex items-center gap-1 shadow-sm">
+            <Clock size={10} /> Nieuw
+          </div>
+        )}
+        {type === 'popular' && (
+          <div className="bg-orange-100 text-orange-600 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest flex items-center gap-1 shadow-sm">
+            <TrendingUp size={10} /> Hot
+          </div>
+        )}
+      </div>
+
+      <div className="p-6 flex-1 flex flex-col w-full">
+        <div className="flex justify-between items-start mb-4">
+          <div className="bg-orange-50 w-10 h-10 rounded-2xl flex items-center justify-center text-orange-500 group-hover:scale-110 group-hover:rotate-6 transition-transform">
+            <Grid3X3 size={20} />
+          </div>
+        </div>
+
+        <h3 className="text-lg font-black text-gray-900 uppercase italic mb-2 line-clamp-2 leading-none group-hover:text-orange-500 transition-colors">
+          {card.title}
+        </h3>
+        
+        <div className="mt-auto pt-2 flex items-center justify-between text-gray-400">
+           <span className="text-[10px] font-bold uppercase tracking-widest flex items-center gap-1 truncate max-w-[150px] text-gray-500">
+             <Users size={12} /> {card.profiles?.username || 'Anoniem'}
+           </span>
+           <span className="text-[10px] font-bold uppercase tracking-widest opacity-60">
+             {new Date(card.created_at).toLocaleDateString()}
+           </span>
+        </div>
+      </div>
     </div>
   );
 
   return (
-    <div className="max-w-7xl mx-auto px-4 py-12">
-      {/* Header Sectie */}
-      <div className="flex flex-col md:flex-row justify-between items-end mb-12 gap-6 text-center md:text-left">
-        <div className="flex-1">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-lg bg-orange-50 text-orange-600 font-black text-xs uppercase tracking-widest mb-3">
-            <Globe size={14} />
-            <span>Openbare Bibliotheek</span>
-          </div>
-          <h1 className="text-5xl font-black text-gray-900 tracking-tight italic">Community</h1>
-          <p className="text-gray-400 mt-2 font-bold text-lg">Ontdek en speel bingo's van andere PINGO-gebruikers</p>
-        </div>
+    <div className="min-h-screen bg-gray-50 pb-20 font-sans selection:bg-orange-100 overflow-x-hidden">
+      
+      {/* CSS VOOR DE ANIMATIE */}
+      <style>{`
+        @keyframes scroll {
+          0% { transform: translateX(0); }
+          100% { transform: translateX(-50%); }
+        }
+        .animate-marquee {
+          display: flex;
+          width: max-content;
+          animation: scroll 60s linear infinite;
+        }
+        .animate-marquee:hover {
+          animation-play-state: paused;
+        }
+      `}</style>
 
-        {/* Zoekbalk */}
-        <div className="relative w-full md:w-96 group">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-300 group-focus-within:text-orange-500 transition-colors" size={20} />
-          <input 
-            type="text"
-            placeholder="Zoek een bingo..."
-            className="w-full pl-12 pr-4 py-4 bg-white border-2 border-gray-100 rounded-[1.5rem] outline-none focus:ring-4 focus:ring-orange-50 focus:border-orange-500 transition-all font-bold text-gray-800 shadow-sm"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
+      {/* --- NIEUWE HEADER & ZOEKBALK (DARK THEME) --- */}
+      <div className="pt-8 px-6 pb-6">
+        <div className="max-w-6xl mx-auto bg-gray-900 rounded-[2.5rem] p-10 md:p-16 relative overflow-hidden shadow-2xl text-center">
+          
+          {/* Achtergrond Decoratie (Oranje Glow) */}
+          <div className="absolute top-0 left-1/2 -translate-x-1/2 w-96 h-96 bg-orange-500 rounded-full blur-[150px] opacity-20 pointer-events-none"></div>
+
+          {/* Content Wrapper */}
+          <div className="relative z-10">
+            
+            {/* Kleine Badge */}
+            <div className="inline-flex items-center gap-2 bg-gray-800 border border-gray-700 text-orange-400 px-4 py-1.5 rounded-full mb-6 animate-in fade-in slide-in-from-bottom-2">
+              <Sparkles size={14} />
+              <span className="text-[10px] font-black uppercase tracking-widest">Ontdek Pingo</span>
+            </div>
+            
+            {/* Grote Titel */}
+            <h1 className="text-4xl md:text-6xl font-black text-white italic uppercase mb-8 tracking-tighter">
+              Community <span className="text-orange-500">Hub</span>
+            </h1>
+
+            {/* Zoekbalk (GLOW VERWIJDERD) */}
+            <div className="max-w-2xl mx-auto relative group">
+              {/* Hier stond eerst de glow div, die is nu weg */}
+              
+              <div className="relative bg-white rounded-[2rem] p-2 flex items-center shadow-xl">
+                <div className="pl-4 text-gray-300 group-focus-within:text-orange-500 transition-colors">
+                  <Search size={24} />
+                </div>
+                <input 
+                  type="text"
+                  placeholder="Zoek naar bingo's (bijv. 'Kerst', 'Borrel')..."
+                  value={searchTerm}
+                  onChange={(e) => handleSearch(e.target.value)}
+                  className="w-full h-12 px-4 bg-transparent font-bold text-gray-900 placeholder-gray-400 focus:outline-none text-lg"
+                />
+                {searching && <Loader2 className="animate-spin text-orange-500 mr-4" />}
+              </div>
+            </div>
+
+          </div>
         </div>
       </div>
 
-      {/* Grid van kaarten */}
-      {filteredCards.length > 0 ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-          {filteredCards.map((card) => (
-            <div 
-              key={card.id} 
-              className="bg-white p-8 rounded-[3rem] shadow-xl shadow-gray-100 border border-gray-50 flex flex-col group transition-all hover:shadow-2xl hover:-translate-y-2 relative overflow-hidden"
-            >
-              {/* Decoratief element op de achtergrond */}
-              <div className="absolute -top-10 -right-10 w-32 h-32 bg-orange-50 rounded-full opacity-50 group-hover:scale-150 transition-transform duration-500"></div>
+      {/* CONTENT */}
+      <div className="w-full py-8 overflow-hidden">
 
-              <div className="flex justify-between items-start mb-6 relative">
-                <div className="p-3 rounded-2xl bg-orange-50 text-orange-500 shadow-sm shadow-orange-100">
-                  <Sparkles size={24} />
-                </div>
-                <div className="flex items-center gap-1.5 text-gray-300 font-black text-[10px] uppercase tracking-tighter bg-gray-50 px-3 py-1 rounded-full">
-                  <List size={12} />
-                  {card.items?.length || 0} items
-                </div>
+        {/* GEVAL 1: ZOEKRESULTATEN */}
+        {searchTerm.length >= 2 ? (
+          <div className="max-w-6xl mx-auto px-6 animate-in fade-in slide-in-from-bottom-4">
+            <h2 className="text-2xl font-black text-gray-900 uppercase italic mb-8 flex items-center gap-2">
+              <Search className="text-orange-500" /> Resultaten voor "{searchTerm}"
+            </h2>
+            {searchResults.length === 0 && !searching ? (
+              <div className="text-center py-10 bg-white rounded-[2.5rem] border-2 border-dashed border-gray-200">
+                <p className="text-gray-400 font-bold uppercase text-sm">Geen kaarten gevonden.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                {searchResults.map(card => <BingoCardItem key={card.id} card={card} className="h-full" />)}
+              </div>
+            )}
+          </div>
+        ) : (
+          /* GEVAL 2: STANDAARD WEERGAVE */
+          <div className="space-y-16 animate-in fade-in slide-in-from-bottom-4">
+            
+            {/* 1. MEEST GESPEELD */}
+            <section className="w-full">
+              <div className="max-w-6xl mx-auto px-6 mb-6">
+                 <div className="flex items-center gap-2">
+                    <div className="bg-orange-100 p-2 rounded-lg text-orange-600"><TrendingUp size={20} /></div>
+                    <h2 className="text-2xl font-black text-gray-900 uppercase italic leading-none">Meest Gespeeld</h2>
+                 </div>
               </div>
 
-              <h3 className="text-2xl font-black text-gray-900 mb-2 leading-tight tracking-tight relative">
-                {card.title}
-              </h3>
-              
-              <div className="flex items-center gap-2 text-gray-400 font-bold text-sm mb-8 relative">
-                <User size={14} className="text-orange-300" />
-                <span>Gedeeld door een Pingo-fan</span>
-              </div>
+              {loading ? (
+                <div className="flex justify-center py-20"><Loader2 className="animate-spin text-orange-500" size={48} /></div>
+              ) : popularCards.length === 0 ? (
+                <div className="max-w-6xl mx-auto px-6 text-center py-20 bg-white rounded-[2.5rem] border-2 border-dashed border-gray-200">
+                  <p className="text-gray-400 font-bold uppercase text-sm">Nog geen publieke kaarten beschikbaar.</p>
+                </div>
+              ) : (
+                <div className="relative w-full overflow-hidden py-4">
+                  <div className="absolute left-0 top-0 bottom-0 w-20 bg-gradient-to-r from-gray-50 to-transparent z-10 pointer-events-none"></div>
+                  <div className="absolute right-0 top-0 bottom-0 w-20 bg-gradient-to-l from-gray-50 to-transparent z-10 pointer-events-none"></div>
+                  
+                  <div className="animate-marquee gap-6 px-6">
+                    {marqueeList.map((card, index) => (
+                      <BingoCardItem 
+                        key={`${card.id}-${index}`} 
+                        card={card} 
+                        type="popular" 
+                        className="w-[300px] md:w-[350px] shrink-0" 
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+            </section>
 
-              <div className="mt-auto relative">
+            {/* 2. MAAK JE EIGEN KAART (BANNER) */}
+            <section className="max-w-6xl mx-auto px-6">
+              <div className="bg-gray-900 rounded-[2.5rem] p-8 md:p-12 relative overflow-hidden group text-center md:text-left flex flex-col md:flex-row items-center justify-between gap-8 shadow-2xl">
+                {/* Achtergrond decoratie */}
+                <div className="absolute top-0 right-0 w-64 h-64 bg-orange-500 rounded-full blur-[100px] opacity-20 group-hover:opacity-30 transition-opacity"></div>
+                
+                <div className="relative z-10 max-w-lg">
+                  <div className="flex items-center gap-2 justify-center md:justify-start mb-4 text-orange-400">
+                    <Palette size={20} />
+                    <span className="font-black uppercase tracking-widest text-xs">Jouw beurt</span>
+                  </div>
+                  <h2 className="text-3xl md:text-4xl font-black text-white italic uppercase mb-4 leading-none">
+                    Maak je eigen <span className="text-orange-500">Bingo Kaart</span>
+                  </h2>
+                  <p className="text-gray-400 font-bold text-sm uppercase leading-relaxed">
+                    Heb je een geweldig idee? Ontwerp je eigen kaart in seconden en deel hem met de community!
+                  </p>
+                </div>
+
                 <button 
-                  onClick={() => navigate(`/play/${card.id}`)} 
-                  className="w-full bg-orange-500 text-white py-4 rounded-[1.5rem] font-black flex items-center justify-center gap-2 hover:bg-orange-600 transition shadow-lg shadow-orange-100 active:scale-95"
+                  onClick={() => navigate('/create')}
+                  className="relative z-10 bg-orange-500 text-white px-8 py-4 rounded-2xl font-black uppercase tracking-widest hover:bg-orange-600 transition shadow-lg hover:scale-105 active:scale-95 flex items-center gap-3 shrink-0"
                 >
-                  <Play size={20} fill="currentColor" />
-                  Nu Spelen
+                  <Plus size={20} strokeWidth={3} />
+                  Nu Maken
                 </button>
               </div>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <div className="text-center py-20 bg-gray-50 rounded-[3rem] border-2 border-dashed border-gray-200">
-          <div className="bg-white w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6 shadow-sm">
-            <Search size={32} className="text-gray-300" />
-          </div>
-          <h3 className="text-2xl font-black text-gray-900 italic">Geen bingo's gevonden</h3>
-          <p className="text-gray-400 font-bold mt-2">Probeer een andere zoekterm of maak er zelf een!</p>
-        </div>
-      )}
+            </section>
 
-      {/* Footer CTA */}
-      <div className="mt-20 p-12 bg-orange-500 rounded-[3.5rem] text-center text-white shadow-2xl shadow-orange-100 relative overflow-hidden">
-        <div className="relative z-10">
-          <h2 className="text-4xl font-black italic mb-4">Zelf een bingo delen?</h2>
-          <p className="text-orange-100 font-bold text-lg mb-8 max-w-xl mx-auto text-balance">
-            Maak je eigen kaart en zet hem op 'Publiek' om hem hier aan de community te laten zien!
-          </p>
-          <button 
-            onClick={() => navigate('/create')}
-            className="bg-white text-orange-500 px-10 py-4 rounded-2xl font-black text-lg hover:bg-orange-50 transition shadow-xl active:scale-95"
-          >
-            Start met Maken
-          </button>
-        </div>
-        {/* Decoratieve vormen */}
-        <div className="absolute -bottom-10 -left-10 w-48 h-48 bg-orange-400 rounded-full opacity-50"></div>
-        <div className="absolute -top-10 -right-10 w-32 h-32 bg-orange-600 rounded-full opacity-30"></div>
+            {/* 3. NET BINNEN (NIEUWSTE) */}
+            {newestCards.length > 0 && (
+              <section className="max-w-6xl mx-auto px-6">
+                <div className="flex items-center gap-2 mb-6">
+                   <div className="bg-blue-100 p-2 rounded-lg text-blue-600"><Clock size={20} /></div>
+                   <h2 className="text-2xl font-black text-gray-900 uppercase italic leading-none">Net Binnen</h2>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  {newestCards.map(card => <BingoCardItem key={card.id} card={card} type="new" className="h-full" />)}
+                </div>
+              </section>
+            )}
+
+          </div>
+        )}
+
       </div>
     </div>
   );
