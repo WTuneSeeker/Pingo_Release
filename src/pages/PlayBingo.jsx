@@ -51,7 +51,7 @@ export default function PlayBingo() {
     init();
   }, [id, sessionId]);
 
-  // 2. HEARTBEAT ❤️
+  // 2. HEARTBEAT
   useEffect(() => {
     if (!sessionId) return;
     const heartbeatInterval = setInterval(async () => {
@@ -150,17 +150,14 @@ export default function PlayBingo() {
       .from('session_participants')
       .select('*')
       .eq('session_id', sId);
-    
     if (data) setParticipants(data);
   };
 
   const joinSession = async (sId) => {
     if (!currentUserIdRef.current) return;
-    
     const { data: profile } = await supabase.from('profiles').select('username').eq('id', currentUserIdRef.current).single();
     const { data: { user } } = await supabase.auth.getUser();
     const displayName = profile?.username || user?.email?.split('@')[0] || 'Speler';
-    
     const { data } = await supabase.from('session_participants').upsert({
       session_id: sId, 
       user_id: currentUserIdRef.current, 
@@ -168,7 +165,6 @@ export default function PlayBingo() {
       marked_indices: [12], 
       updated_at: new Date().toISOString()
     }, { onConflict: 'session_id, user_id' }).select().single();
-    
     if (data) { 
       myParticipantIdRef.current = data.id;
       fetchParticipants(sId);
@@ -179,11 +175,9 @@ export default function PlayBingo() {
   const startGroupSession = async () => {
     const joinCode = `P-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
     if (!currentUserIdRef.current) return;
-    
     const { data } = await supabase.from('bingo_sessions')
       .insert([{ host_id: currentUserIdRef.current, card_id: id, join_code: joinCode }])
       .select().single();
-      
     if (data) navigate(`/play-session/${data.id}`);
   };
 
@@ -197,7 +191,6 @@ export default function PlayBingo() {
     initial[12] = true;
     setMarked(initial);
     setBingoCount(0);
-
     if (sessionId && myParticipantIdRef.current) {
       await supabase.from('session_participants').update({ 
         marked_indices: [12], 
@@ -240,7 +233,6 @@ export default function PlayBingo() {
     const shuffled = [...items].sort(() => 0.5 - Math.random()).slice(0, 24);
     shuffled.splice(12, 0, "FREE SPACE");
     setGrid(shuffled);
-    
     const initial = new Array(25).fill(false);
     initial[12] = true;
     setMarked(initial);
@@ -258,17 +250,13 @@ export default function PlayBingo() {
 
   const toggleTile = async (index) => {
     if (index === 12 || isKickedLocal) return; 
-    
     const newMarked = [...marked];
     newMarked[index] = !newMarked[index];
     setMarked(newMarked);
-    
     const rowCount = checkBingoRows(newMarked);
     setBingoCount(rowCount); 
-
     if (sessionId && myParticipantIdRef.current) {
       const activeIndices = newMarked.map((m, i) => m ? i : null).filter(n => n !== null);
-      
       await supabase.from('session_participants').update({ 
         marked_indices: activeIndices, 
         has_bingo: (gameMode === 'rows' ? rowCount >= 1 : newMarked.every(m => m)),
@@ -317,29 +305,20 @@ export default function PlayBingo() {
 
     const level = Math.min(rowCount, 12);
     if (isFull) return { ...titles[12], lobbyColor: lobbyColors[12] };
-    
-    return { 
-      ...titles[level] || titles[0], 
-      lobbyColor: lobbyColors[level] || "bg-white border-gray-50"
-    };
+    return { ...titles[level] || titles[0], lobbyColor: lobbyColors[level] || "bg-white border-gray-50" };
   };
 
   // --- SORTEREN (LIVE) ---
   const sortedParticipants = useMemo(() => {
     return [...participants].sort((a, b) => {
-      // 1. Bereken Aantal Vakjes
       const countA = a.marked_indices?.length || 0;
       const countB = b.marked_indices?.length || 0;
-
-      // 2. Bereken of ze Full Bingo hebben
       const isFullA = countA === 25;
       const isFullB = countB === 25;
 
-      // REGEL 1: Full Bingo wint ALTIJD
       if (isFullA && !isFullB) return -1;
       if (!isFullA && isFullB) return 1;
 
-      // 3. Bereken aantal Rijen (Bingo's) voor "Rows" modus
       if (gameMode === 'rows') {
         const gridA = new Array(25).fill(false);
         a.marked_indices?.forEach(idx => gridA[idx] = true);
@@ -349,13 +328,8 @@ export default function PlayBingo() {
         b.marked_indices?.forEach(idx => gridB[idx] = true);
         const bingosB = checkBingoRows(gridB);
 
-        // REGEL 2: Meer bingo-lijnen wint
-        if (bingosA !== bingosB) {
-          return bingosB - bingosA;
-        }
+        if (bingosA !== bingosB) return bingosB - bingosA;
       }
-
-      // REGEL 3: Meeste vakjes
       return countB - countA;
     });
   }, [participants, gameMode]);
@@ -398,14 +372,8 @@ export default function PlayBingo() {
       {/* --- HEADER WRAPPER --- */}
       <div className="pt-8 px-6 pb-6 relative z-50">
         <div className="max-w-6xl mx-auto relative group">
-          
-          {/* 1. DE HEADER BALK */}
           <div className="relative z-20 bg-gray-900 rounded-[2.5rem] px-6 py-6 md:px-10 md:py-8 shadow-2xl flex flex-col md:flex-row justify-between items-center gap-6 overflow-hidden">
-            
-            {/* Achtergrond Glow */}
             <div className="absolute top-0 left-1/2 -translate-x-1/2 w-64 h-64 bg-orange-500 rounded-full blur-[120px] opacity-20 pointer-events-none"></div>
-
-            {/* Links */}
             <div className="relative z-10 flex items-center gap-4 w-full md:w-auto">
                <button onClick={() => navigate(-1)} className="p-2 bg-gray-800 text-gray-400 rounded-xl hover:text-white hover:bg-gray-700 transition-colors">
                  <ChevronLeft size={24} />
@@ -419,8 +387,6 @@ export default function PlayBingo() {
                  </p>
                </div>
             </div>
-
-            {/* Rechts */}
             <div className="relative z-10 flex items-center gap-3 w-full md:w-auto justify-end">
               {sessionId && (
                 <button 
@@ -442,35 +408,19 @@ export default function PlayBingo() {
               </button>
             </div>
           </div>
-
-          {/* 2. DE SLIDING NOTIFICATIE */}
-          <div className={`
-              absolute left-0 right-0 z-10 w-full flex justify-center pointer-events-none
-              transition-all duration-700 ease-[cubic-bezier(0.34,1.56,0.64,1)] 
-              ${!sessionId && bingoCount > 0 
-                  ? 'top-full -translate-y-5 opacity-100' 
-                  : 'top-full -translate-y-[150%] opacity-0' 
-               }
-          `}>
-             <div className={`
-                w-[90%] md:w-auto min-w-[300px] px-8 pt-10 pb-3 rounded-b-3xl rounded-t-lg shadow-2xl border-2 border-t-0
-                flex items-center justify-center gap-4 pointer-events-auto
-                ${soloBranding.color || 'bg-orange-500 text-white border-orange-600'}
-             `}>
+          <div className={`absolute left-0 right-0 z-10 w-full flex justify-center pointer-events-none transition-all duration-700 ease-[cubic-bezier(0.34,1.56,0.64,1)] ${!sessionId && bingoCount > 0 ? 'top-full -translate-y-5 opacity-100' : 'top-full -translate-y-[150%] opacity-0'}`}>
+             <div className={`w-[90%] md:w-auto min-w-[300px] px-8 pt-10 pb-3 rounded-b-3xl rounded-t-lg shadow-2xl border-2 border-t-0 flex items-center justify-center gap-4 pointer-events-auto ${soloBranding.color || 'bg-orange-500 text-white border-orange-600'}`}>
                 <div className="animate-bounce">{soloBranding.icon}</div>
                 <span className="text-2xl font-black italic uppercase tracking-widest drop-shadow-sm">{soloBranding.title}</span>
                 <div className="animate-bounce delay-75">{soloBranding.icon}</div>
              </div>
           </div>
-
         </div>
       </div>
 
       <div className="max-w-7xl mx-auto px-4 flex flex-col lg:flex-row items-center lg:items-start justify-center gap-12 mt-4">
         <div className="flex-1 w-full max-w-[600px] flex flex-col items-center">
-          
           <div className="text-center mb-6 w-full">
-            {/* MULTIPLAYER CONTROLS */}
             {sessionId && (
               <div className="flex flex-col items-center gap-6">
                 <div className="w-full">
@@ -486,7 +436,6 @@ export default function PlayBingo() {
                     </div>
                   )}
                 </div>
-                
                 <div className="flex items-center gap-2 text-xs text-gray-400 font-bold uppercase tracking-widest">
                   <Info size={14}/>
                    {gameMode === 'rows' ? 'Win met horizontale/verticale rijen!' : 'Alleen VOLLE KAART telt!'}
@@ -495,18 +444,13 @@ export default function PlayBingo() {
             )}
           </div>
 
-          {/* --- SHUFFLE BAR --- */}
           <div className="w-full flex justify-between items-end mb-3 px-2">
             <div className="flex items-center gap-2 text-gray-400">
                <span className="text-[10px] font-black uppercase tracking-widest bg-gray-100 px-2 py-1 rounded-lg">
                  {marked.filter(Boolean).length - 1}/24
                </span>
             </div>
-            
-            <button 
-              onClick={handleShuffleClick} 
-              className="group flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-gray-400 hover:text-orange-500 transition-colors"
-            >
+            <button onClick={handleShuffleClick} className="group flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-gray-400 hover:text-orange-500 transition-colors">
               <Shuffle size={14} className="group-hover:rotate-180 transition-transform duration-500" />
               Kaart Husselen
             </button>
@@ -516,23 +460,9 @@ export default function PlayBingo() {
             {grid.map((text, index) => {
               const isLong = text && text.length > 25;
               const isVeryLong = text && text.length > 40;
-
               return (
-                <button 
-                  key={index} 
-                  onClick={() => toggleTile(index)} 
-                  className={`relative aspect-square flex items-center justify-center p-1 sm:p-2 text-center rounded-2xl transition-all border-2 font-black uppercase overflow-hidden ${index === 12 || marked[index] ? 'bg-orange-500 text-white border-orange-400 scale-95 shadow-inner' : 'bg-white text-gray-800 border-gray-100 hover:border-orange-200'}`}
-                >
-                  <span className={`leading-[1.1] tracking-tight break-words hyphens-auto w-full select-none 
-                    ${index === 12 
-                      ? 'text-[8px] sm:text-[10px]' 
-                      : isVeryLong 
-                        ? 'text-[7px] sm:text-[9px]' 
-                        : isLong 
-                          ? 'text-[8px] sm:text-[10px]' 
-                          : 'text-[9px] sm:text-xs'
-                    }`}
-                  >
+                <button key={index} onClick={() => toggleTile(index)} className={`relative aspect-square flex items-center justify-center p-1 sm:p-2 text-center rounded-2xl transition-all border-2 font-black uppercase overflow-hidden ${index === 12 || marked[index] ? 'bg-orange-500 text-white border-orange-400 scale-95 shadow-inner' : 'bg-white text-gray-800 border-gray-100 hover:border-orange-200'}`}>
+                  <span className={`leading-[1.1] tracking-tight break-words hyphens-auto w-full select-none ${index === 12 ? 'text-[8px] sm:text-[10px]' : isVeryLong ? 'text-[7px] sm:text-[9px]' : isLong ? 'text-[8px] sm:text-[10px]' : 'text-[9px] sm:text-xs'}`}>
                     {index === 12 ? "PINGO FREE" : text}
                   </span>
                 </button>
@@ -545,8 +475,6 @@ export default function PlayBingo() {
         {sessionId && (
           <div className="w-full lg:w-96 shrink-0 animate-in slide-in-from-right duration-700">
             <div className="bg-white/80 backdrop-blur-xl rounded-[2.5rem] p-6 shadow-2xl border border-white/50 sticky top-32">
-              
-              {/* Header */}
               <div className="flex items-center justify-between mb-6 pl-2">
                  <h3 className="text-xl font-black text-gray-900 flex items-center gap-3 italic uppercase">
                    <Users className="text-orange-500" size={24} /> 
@@ -554,31 +482,27 @@ export default function PlayBingo() {
                  </h3>
               </div>
               
-              {/* Scroll Container */}
               <div className="space-y-3 max-h-[60vh] overflow-y-auto p-4 -mx-4 custom-scrollbar" style={{ scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 transparent' }}>
                 <style>{`.custom-scrollbar::-webkit-scrollbar { width: 4px; } .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }`}</style>
-                {sortedParticipants.map((p, i) => { // Gebruik nu sortedParticipants
+                {sortedParticipants.map((p, i) => { 
                   const pMarkedCount = p.marked_indices?.length || 0;
                   const pIsFull = pMarkedCount === 25;
-                  
                   const tempGrid = new Array(25).fill(false);
                   p.marked_indices?.forEach(idx => tempGrid[idx] = true);
                   const pRowCount = checkBingoRows(tempGrid);
-                  
                   const pBranding = getBranding(pRowCount, pIsFull, gameMode);
                   const hasSomeBingo = (gameMode === 'rows' && pRowCount > 0) || pIsFull;
 
                   return (
-                    <div key={p.id} className={`group relative flex items-center gap-4 p-3 rounded-2xl border-2 transition-all duration-300 
+                    <div key={p.id} className={`group relative flex items-center gap-4 p-3 rounded-2xl border-2 transition-all duration-300 overflow-hidden 
                         ${pIsFull 
-                            ? `${pBranding.lobbyColor} scale-[1.03] z-10` // FULL BINGO
+                            ? `${pBranding.lobbyColor} scale-[1.03] z-10` 
                             : hasSomeBingo
-                                ? `${pBranding.lobbyColor} text-white shadow-md scale-[1.02]` // GEWONE BINGO
-                                : 'bg-white border-gray-50 hover:border-orange-100 hover:shadow-md' // GEEN BINGO
+                                ? `${pBranding.lobbyColor} text-white shadow-md scale-[1.02]`
+                                : 'bg-white border-gray-50 hover:border-orange-100 hover:shadow-md'
                         }
                     `}>
                       
-                      {/* Avatar */}
                       <div className="relative shrink-0">
                         <div className={`w-10 h-10 rounded-full flex items-center justify-center text-xs font-black shadow-sm 
                             ${pIsFull 
@@ -597,36 +521,44 @@ export default function PlayBingo() {
                         )}
                       </div>
 
-                      {/* Info */}
-                      <div className="flex-1 min-w-0">
+                      <div className="flex-1 min-w-0 pr-12 relative"> {/* Added Padding Right & Relative */}
                         <div className="flex justify-between items-center mb-0.5">
                            <span className={`font-black text-xs uppercase truncate ${pIsFull ? 'text-orange-500' : (hasSomeBingo ? 'text-white' : 'text-gray-700')}`}>
                                {p.user_name}
                            </span>
-                           {/* Score Badge */}
-                           <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-md ${pIsFull ? 'bg-orange-500 text-white' : (hasSomeBingo ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-400')}`}>
-                             {(pMarkedCount > 0 ? pMarkedCount - 1 : 0)}/24
-                           </span>
                         </div>
                         
-                        {/* Status Text */}
                         <span className={`text-[9px] font-black uppercase tracking-widest truncate flex items-center gap-1 ${pIsFull ? 'text-orange-400 animate-pulse' : (hasSomeBingo ? 'text-white/90' : 'text-gray-300 group-hover:text-orange-400 transition-colors')}`}>
                            {hasSomeBingo ? (
                                <>{pBranding.icon} {pBranding.title}</>
                            ) : 'Spelend...'}
                         </span>
-                      </div>
 
-                      {/* Kick Button (AANGEPAST: Pas zichtbaar bij hover) */}
-                      {isHost && p.user_id !== currentUserIdState && (
-                        <button 
-                          onClick={() => kickParticipant(p.id, p.user_id)} 
-                          className={`p-1.5 rounded-lg transition-all duration-200 opacity-0 group-hover:opacity-100 focus:opacity-100 ${hasSomeBingo ? 'text-white/70 hover:bg-white/20 hover:text-white' : 'text-gray-300 hover:bg-red-50 hover:text-red-500'}`}
-                          title="Verwijder speler"
-                        >
-                          <UserMinus size={14} />
-                        </button>
-                      )}
+                        {/* --- SCORE BADGE + KICK BUTTON CONTAINER --- */}
+                        <div className="absolute right-0 top-1/2 -translate-y-1/2 flex items-center justify-end w-16 h-full">
+                           
+                           {/* Score Badge (Schuift naar links bij hover) */}
+                           <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-md transition-all duration-300 transform group-hover:-translate-x-8
+                             ${pIsFull ? 'bg-orange-500 text-white' : (hasSomeBingo ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-400')}
+                           `}>
+                             {(pMarkedCount > 0 ? pMarkedCount - 1 : 0)}/24
+                           </span>
+
+                           {/* Kick Button (Schuift binnen bij hover) */}
+                           {isHost && p.user_id !== currentUserIdState && (
+                             <button 
+                               onClick={() => kickParticipant(p.id, p.user_id)} 
+                               className={`absolute right-0 p-1.5 rounded-lg transition-all duration-300 transform translate-x-full opacity-0 group-hover:translate-x-0 group-hover:opacity-100
+                                 ${hasSomeBingo ? 'text-white/70 hover:bg-white/20 hover:text-white' : 'text-gray-300 hover:bg-red-50 hover:text-red-500'}
+                               `}
+                               title="Verwijder speler"
+                             >
+                               <UserMinus size={14} />
+                             </button>
+                           )}
+                        </div>
+
+                      </div>
                     </div>
                   );
                 })}
