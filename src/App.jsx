@@ -9,6 +9,7 @@ import Configurator from './pages/Configurator';
 import PlayBingo from './pages/PlayBingo';
 import Community from './pages/Community';
 import Join from './pages/Join';
+import NotFound from './pages/NotFound'; // <--- NIEUW: Importeer de 404 pagina
 
 // Components
 import Navbar from './components/Navbar';
@@ -58,6 +59,10 @@ function App() {
             
             <Route path="/community" element={<Community />} />
             <Route path="/join" element={<Join />} />
+
+            {/* 404 CATCH-ALL ROUTE (Moet altijd als laatste staan) */}
+            <Route path="*" element={<NotFound />} />
+            
           </Routes>
         </PageLayout>
 
