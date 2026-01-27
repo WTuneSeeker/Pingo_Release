@@ -94,24 +94,24 @@ export default function Community() {
   const BingoCardItem = ({ card, type, className = "" }) => (
     <div 
       onClick={() => handleCardClick(card.id)}
-      className={`group bg-white rounded-[2rem] border-2 border-transparent hover:border-orange-200 shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden cursor-pointer flex flex-col relative shrink-0 ${className}`}
+      className={`group bg-white dark:bg-gray-800 rounded-[2rem] border-2 border-transparent dark:border-gray-700 hover:border-orange-200 dark:hover:border-orange-500/30 shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden cursor-pointer flex flex-col relative shrink-0 ${className}`}
     >
       {/* --- TOP RIGHT: KLIK TELLER & BADGES --- */}
       <div className="absolute top-4 right-4 z-10 flex items-center gap-2">
         
         {/* Play Count */}
-        <div className="bg-white/90 backdrop-blur-sm border border-gray-100 text-gray-400 px-3 py-1 rounded-full text-[10px] font-black flex items-center gap-1.5 shadow-sm group-hover:text-orange-500 transition-colors">
+        <div className="bg-white/90 dark:bg-gray-900/90 backdrop-blur-sm border border-gray-100 dark:border-gray-700 text-gray-400 dark:text-gray-500 px-3 py-1 rounded-full text-[10px] font-black flex items-center gap-1.5 shadow-sm group-hover:text-orange-500 transition-colors">
           <Eye size={12} /> {card.play_count || 0}
         </div>
 
         {/* Badges */}
         {type === 'new' && (
-          <div className="bg-blue-100 text-blue-600 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest flex items-center gap-1 shadow-sm">
+          <div className="bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest flex items-center gap-1 shadow-sm">
             <Clock size={10} /> Nieuw
           </div>
         )}
         {type === 'popular' && (
-          <div className="bg-orange-100 text-orange-600 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest flex items-center gap-1 shadow-sm">
+          <div className="bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest flex items-center gap-1 shadow-sm">
             <TrendingUp size={10} /> Hot
           </div>
         )}
@@ -119,17 +119,17 @@ export default function Community() {
 
       <div className="p-6 flex-1 flex flex-col w-full">
         <div className="flex justify-between items-start mb-4">
-          <div className="bg-orange-50 w-10 h-10 rounded-2xl flex items-center justify-center text-orange-500 group-hover:scale-110 group-hover:rotate-6 transition-transform">
+          <div className="bg-orange-50 dark:bg-gray-700 w-10 h-10 rounded-2xl flex items-center justify-center text-orange-500 group-hover:scale-110 group-hover:rotate-6 transition-transform">
             <Grid3X3 size={20} />
           </div>
         </div>
 
-        <h3 className="text-lg font-black text-gray-900 uppercase italic mb-2 line-clamp-2 leading-none group-hover:text-orange-500 transition-colors">
+        <h3 className="text-lg font-black text-gray-900 dark:text-white uppercase italic mb-2 line-clamp-2 leading-none group-hover:text-orange-500 transition-colors">
           {card.title}
         </h3>
         
-        <div className="mt-auto pt-2 flex items-center justify-between text-gray-400">
-           <span className="text-[10px] font-bold uppercase tracking-widest flex items-center gap-1 truncate max-w-[150px] text-gray-500">
+        <div className="mt-auto pt-2 flex items-center justify-between text-gray-400 dark:text-gray-500">
+           <span className="text-[10px] font-bold uppercase tracking-widest flex items-center gap-1 truncate max-w-[150px] text-gray-500 dark:text-gray-400">
              <Users size={12} /> {card.profiles?.username || 'Anoniem'}
            </span>
            <span className="text-[10px] font-bold uppercase tracking-widest opacity-60">
@@ -141,7 +141,7 @@ export default function Community() {
   );
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-20 font-sans selection:bg-orange-100 overflow-x-hidden">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 pb-20 font-sans selection:bg-orange-100 dark:selection:bg-orange-900 overflow-x-hidden transition-colors duration-300">
       
       {/* CSS VOOR DE ANIMATIE */}
       <style>{`
@@ -161,7 +161,7 @@ export default function Community() {
 
       {/* --- NIEUWE HEADER & ZOEKBALK (DARK THEME) --- */}
       <div className="pt-8 px-6 pb-6">
-        <div className="max-w-6xl mx-auto bg-gray-900 rounded-[2.5rem] p-10 md:p-16 relative overflow-hidden shadow-2xl text-center">
+        <div className="max-w-6xl mx-auto bg-gray-900 rounded-[2.5rem] p-10 md:p-16 relative overflow-hidden shadow-2xl text-center border dark:border-gray-800">
           
           {/* Achtergrond Decoratie (Oranje Glow) */}
           <div className="absolute top-0 left-1/2 -translate-x-1/2 w-96 h-96 bg-orange-500 rounded-full blur-[150px] opacity-20 pointer-events-none"></div>
@@ -180,12 +180,10 @@ export default function Community() {
               Community <span className="text-orange-500">Hub</span>
             </h1>
 
-            {/* Zoekbalk (GLOW VERWIJDERD) */}
+            {/* Zoekbalk */}
             <div className="max-w-2xl mx-auto relative group">
-              {/* Hier stond eerst de glow div, die is nu weg */}
-              
-              <div className="relative bg-white rounded-[2rem] p-2 flex items-center shadow-xl">
-                <div className="pl-4 text-gray-300 group-focus-within:text-orange-500 transition-colors">
+              <div className="relative bg-white dark:bg-gray-800 rounded-[2rem] p-2 flex items-center shadow-xl transition-colors duration-300">
+                <div className="pl-4 text-gray-300 dark:text-gray-500 group-focus-within:text-orange-500 transition-colors">
                   <Search size={24} />
                 </div>
                 <input 
@@ -193,7 +191,7 @@ export default function Community() {
                   placeholder="Zoek naar bingo's (bijv. 'Kerst', 'Borrel')..."
                   value={searchTerm}
                   onChange={(e) => handleSearch(e.target.value)}
-                  className="w-full h-12 px-4 bg-transparent font-bold text-gray-900 placeholder-gray-400 focus:outline-none text-lg"
+                  className="w-full h-12 px-4 bg-transparent font-bold text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-600 focus:outline-none text-lg"
                 />
                 {searching && <Loader2 className="animate-spin text-orange-500 mr-4" />}
               </div>
@@ -209,12 +207,12 @@ export default function Community() {
         {/* GEVAL 1: ZOEKRESULTATEN */}
         {searchTerm.length >= 2 ? (
           <div className="max-w-6xl mx-auto px-6 animate-in fade-in slide-in-from-bottom-4">
-            <h2 className="text-2xl font-black text-gray-900 uppercase italic mb-8 flex items-center gap-2">
+            <h2 className="text-2xl font-black text-gray-900 dark:text-white uppercase italic mb-8 flex items-center gap-2">
               <Search className="text-orange-500" /> Resultaten voor "{searchTerm}"
             </h2>
             {searchResults.length === 0 && !searching ? (
-              <div className="text-center py-10 bg-white rounded-[2.5rem] border-2 border-dashed border-gray-200">
-                <p className="text-gray-400 font-bold uppercase text-sm">Geen kaarten gevonden.</p>
+              <div className="text-center py-10 bg-white dark:bg-gray-800 rounded-[2.5rem] border-2 border-dashed border-gray-200 dark:border-gray-700">
+                <p className="text-gray-400 dark:text-gray-500 font-bold uppercase text-sm">Geen kaarten gevonden.</p>
               </div>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -229,22 +227,23 @@ export default function Community() {
             {/* 1. MEEST GESPEELD */}
             <section className="w-full">
               <div className="max-w-6xl mx-auto px-6 mb-6">
-                 <div className="flex items-center gap-2">
-                    <div className="bg-orange-100 p-2 rounded-lg text-orange-600"><TrendingUp size={20} /></div>
-                    <h2 className="text-2xl font-black text-gray-900 uppercase italic leading-none">Meest Gespeeld</h2>
-                 </div>
+                  <div className="flex items-center gap-2">
+                    <div className="bg-orange-100 dark:bg-orange-900/30 p-2 rounded-lg text-orange-600 dark:text-orange-400"><TrendingUp size={20} /></div>
+                    <h2 className="text-2xl font-black text-gray-900 dark:text-white uppercase italic leading-none">Meest Gespeeld</h2>
+                  </div>
               </div>
 
               {loading ? (
                 <div className="flex justify-center py-20"><Loader2 className="animate-spin text-orange-500" size={48} /></div>
               ) : popularCards.length === 0 ? (
-                <div className="max-w-6xl mx-auto px-6 text-center py-20 bg-white rounded-[2.5rem] border-2 border-dashed border-gray-200">
-                  <p className="text-gray-400 font-bold uppercase text-sm">Nog geen publieke kaarten beschikbaar.</p>
+                <div className="max-w-6xl mx-auto px-6 text-center py-20 bg-white dark:bg-gray-800 rounded-[2.5rem] border-2 border-dashed border-gray-200 dark:border-gray-700">
+                  <p className="text-gray-400 dark:text-gray-500 font-bold uppercase text-sm">Nog geen publieke kaarten beschikbaar.</p>
                 </div>
               ) : (
                 <div className="relative w-full overflow-hidden py-4">
-                  <div className="absolute left-0 top-0 bottom-0 w-20 bg-gradient-to-r from-gray-50 to-transparent z-10 pointer-events-none"></div>
-                  <div className="absolute right-0 top-0 bottom-0 w-20 bg-gradient-to-l from-gray-50 to-transparent z-10 pointer-events-none"></div>
+                  {/* Fading Edges voor Marquee */}
+                  <div className="absolute left-0 top-0 bottom-0 w-20 bg-gradient-to-r from-gray-50 dark:from-gray-900 to-transparent z-10 pointer-events-none transition-colors duration-300"></div>
+                  <div className="absolute right-0 top-0 bottom-0 w-20 bg-gradient-to-l from-gray-50 dark:from-gray-900 to-transparent z-10 pointer-events-none transition-colors duration-300"></div>
                   
                   <div className="animate-marquee gap-6 px-6">
                     {marqueeList.map((card, index) => (
@@ -262,7 +261,7 @@ export default function Community() {
 
             {/* 2. MAAK JE EIGEN KAART (BANNER) */}
             <section className="max-w-6xl mx-auto px-6">
-              <div className="bg-gray-900 rounded-[2.5rem] p-8 md:p-12 relative overflow-hidden group text-center md:text-left flex flex-col md:flex-row items-center justify-between gap-8 shadow-2xl">
+              <div className="bg-gray-900 dark:bg-gray-800 rounded-[2.5rem] p-8 md:p-12 relative overflow-hidden group text-center md:text-left flex flex-col md:flex-row items-center justify-between gap-8 shadow-2xl border dark:border-gray-700">
                 {/* Achtergrond decoratie */}
                 <div className="absolute top-0 right-0 w-64 h-64 bg-orange-500 rounded-full blur-[100px] opacity-20 group-hover:opacity-30 transition-opacity"></div>
                 
@@ -293,8 +292,8 @@ export default function Community() {
             {newestCards.length > 0 && (
               <section className="max-w-6xl mx-auto px-6">
                 <div className="flex items-center gap-2 mb-6">
-                   <div className="bg-blue-100 p-2 rounded-lg text-blue-600"><Clock size={20} /></div>
-                   <h2 className="text-2xl font-black text-gray-900 uppercase italic leading-none">Net Binnen</h2>
+                    <div className="bg-blue-100 dark:bg-blue-900/30 p-2 rounded-lg text-blue-600 dark:text-blue-400"><Clock size={20} /></div>
+                    <h2 className="text-2xl font-black text-gray-900 dark:text-white uppercase italic leading-none">Net Binnen</h2>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                   {newestCards.map(card => <BingoCardItem key={card.id} card={card} type="new" className="h-full" />)}
