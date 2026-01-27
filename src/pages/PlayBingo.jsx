@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import { 
@@ -51,11 +51,9 @@ export default function PlayBingo() {
     init();
   }, [id, sessionId]);
 
-  // 2. HEARTBEAT ❤️ (NIEUW: Houdt je status 'Online')
+  // 2. HEARTBEAT ❤️
   useEffect(() => {
     if (!sessionId) return;
-
-    // Elke 60 seconden sturen we een signaal naar de DB dat we nog actief zijn
     const heartbeatInterval = setInterval(async () => {
       if (myParticipantIdRef.current) {
         await supabase
@@ -63,8 +61,7 @@ export default function PlayBingo() {
           .update({ updated_at: new Date().toISOString() })
           .eq('id', myParticipantIdRef.current);
       }
-    }, 60000); // 1 minuut
-
+    }, 60000); 
     return () => clearInterval(heartbeatInterval);
   }, [sessionId]);
 
@@ -149,11 +146,11 @@ export default function PlayBingo() {
   };
 
   const fetchParticipants = async (sId) => {
+    // We halen de data op, maar sorteren doen we later client-side
     const { data } = await supabase
       .from('session_participants')
       .select('*')
-      .eq('session_id', sId)
-      .order('updated_at', { ascending: false });
+      .eq('session_id', sId);
     
     if (data) setParticipants(data);
   };
@@ -211,16 +208,11 @@ export default function PlayBingo() {
     }
   };
 
-  // --- SHUFFLE LOGICA ---
   const handleShuffleClick = () => {
     const markedCount = marked.filter(Boolean).length;
     const realMarks = marked[12] ? markedCount - 1 : markedCount;
-
-    if (realMarks > 0) {
-      setShowShuffleConfirm(true);
-    } else {
-      executeShuffle();
-    }
+    if (realMarks > 0) setShowShuffleConfirm(true);
+    else executeShuffle();
   };
 
   const executeShuffle = () => {
@@ -332,6 +324,42 @@ export default function PlayBingo() {
       lobbyColor: lobbyColors[level] || "bg-white border-gray-50"
     };
   };
+
+  // --- SORTEREN (LIVE) ---
+  const sortedParticipants = useMemo(() => {
+    return [...participants].sort((a, b) => {
+      // 1. Bereken Aantal Vakjes
+      const countA = a.marked_indices?.length || 0;
+      const countB = b.marked_indices?.length || 0;
+
+      // 2. Bereken of ze Full Bingo hebben (25 vakjes)
+      const isFullA = countA === 25;
+      const isFullB = countB === 25;
+
+      // REGEL 1: Full Bingo wint ALTIJD
+      if (isFullA && !isFullB) return -1; // A boven B
+      if (!isFullA && isFullB) return 1;  // B boven A
+
+      // 3. Bereken aantal Rijen (Bingo's) voor "Rows" modus
+      if (gameMode === 'rows') {
+        const gridA = new Array(25).fill(false);
+        a.marked_indices?.forEach(idx => gridA[idx] = true);
+        const bingosA = checkBingoRows(gridA);
+
+        const gridB = new Array(25).fill(false);
+        b.marked_indices?.forEach(idx => gridB[idx] = true);
+        const bingosB = checkBingoRows(gridB);
+
+        // REGEL 2: Meer bingo-lijnen wint van minder lijnen (ook al heb je minder vakjes)
+        if (bingosA !== bingosB) {
+          return bingosB - bingosA; // Hoogste bingo getal eerst
+        }
+      }
+
+      // REGEL 3: Als bingo gelijk is (of in 'full' mode zonder full bingo), wint meeste vakjes
+      return countB - countA;
+    });
+  }, [participants, gameMode]);
 
   const soloBranding = getBranding(bingoCount, marked.every(m => m), 'rows');
 
@@ -530,7 +558,7 @@ export default function PlayBingo() {
               {/* Scroll Container */}
               <div className="space-y-3 max-h-[60vh] overflow-y-auto p-4 -mx-4 custom-scrollbar" style={{ scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 transparent' }}>
                 <style>{`.custom-scrollbar::-webkit-scrollbar { width: 4px; } .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }`}</style>
-                {participants.map((p, i) => {
+                {sortedParticipants.map((p, i) => { // Gebruik nu sortedParticipants
                   const pMarkedCount = p.marked_indices?.length || 0;
                   const pIsFull = pMarkedCount === 25;
                   
@@ -542,12 +570,12 @@ export default function PlayBingo() {
                   const hasSomeBingo = (gameMode === 'rows' && pRowCount > 0) || pIsFull;
 
                   return (
-                    <div key={i} className={`group relative flex items-center gap-4 p-3 rounded-2xl border-2 transition-all duration-300 
+                    <div key={p.id} className={`group relative flex items-center gap-4 p-3 rounded-2xl border-2 transition-all duration-300 
                         ${pIsFull 
-                            ? `${pBranding.lobbyColor} scale-[1.03] z-10` // FULL BINGO (Dark Mode Style)
+                            ? `${pBranding.lobbyColor} scale-[1.03] z-10` // FULL BINGO
                             : hasSomeBingo
-                                ? `${pBranding.lobbyColor} text-white shadow-md scale-[1.02]` // GEWONE BINGO (Kleur van de rank)
-                                : 'bg-white border-gray-50 hover:border-orange-100 hover:shadow-md' // GEEN BINGO (Wit)
+                                ? `${pBranding.lobbyColor} text-white shadow-md scale-[1.02]` // GEWONE BINGO
+                                : 'bg-white border-gray-50 hover:border-orange-100 hover:shadow-md' // GEEN BINGO
                         }
                     `}>
                       
