@@ -3,7 +3,7 @@ import Home from './pages/Home';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
-import Configurator from './pages/Configurator';
+import Configurator from './pages/Configurator'; // Wordt gebruikt voor Create én Edit
 import PlayBingo from './pages/PlayBingo';
 import Community from './pages/Community';
 import Navbar from './components/Navbar';
@@ -20,13 +20,17 @@ function App() {
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />
             <Route path="/dashboard" element={<Dashboard />} />
+            
+            {/* Create Route */}
             <Route path="/create" element={<Configurator />} />
+            
+            {/* 👇 DEZE MISTE NOG: Edit Route (gebruikt ook Configurator) */}
+            <Route path="/edit/:id" element={<Configurator />} />
             
             {/* Standaard route om een kaart te spelen (alleen) */}
             <Route path="/play/:id" element={<PlayBingo />} />
             
-            {/* NIEUW: Route voor groepsessies (multiplayer) */}
-            {/* We gebruiken dezelfde PlayBingo component, maar met een sessionId */}
+            {/* Route voor groepsessies (multiplayer) */}
             <Route path="/play-session/:sessionId" element={<PlayBingo />} />
             
             <Route path="/community" element={<Community />} />
