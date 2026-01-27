@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import { 
-  Trash2, Play, Plus, Edit, LayoutGrid, LogOut, User 
+  Trash2, Play, Plus, Edit, LayoutGrid, LogOut 
 } from 'lucide-react';
 
 export default function Dashboard() {
@@ -11,7 +11,7 @@ export default function Dashboard() {
   const [username, setUsername] = useState('');
   const navigate = useNavigate();
 
-  // 1. Initialisatie bij laden pagina
+  // 1. Initialisatie
   useEffect(() => {
     const init = async () => {
       await getProfile();
@@ -20,17 +20,16 @@ export default function Dashboard() {
     init();
   }, []);
 
-  // 2. Haal gebruikersnaam op
+  // 2. Profiel ophalen
   const getProfile = async () => {
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return navigate('/login'); // Stuur terug als niet ingelogd
+    if (!user) return navigate('/login');
 
-    // Probeer profielnaam te pakken, anders email
     const { data } = await supabase.from('profiles').select('username').eq('id', user.id).single();
     setUsername(data?.username || user.email.split('@')[0]);
   };
 
-  // 3. Haal de bingokaarten op
+  // 3. Kaarten ophalen
   const fetchCards = async () => {
     setLoading(true);
     const { data: { user } } = await supabase.auth.getUser();
@@ -42,33 +41,29 @@ export default function Dashboard() {
         .eq('user_id', user.id)
         .order('created_at', { ascending: false });
 
-      if (error) console.error("Fout bij ophalen:", error);
       if (data) setCards(data);
+      if (error) console.error("Error fetching cards:", error);
     }
     setLoading(false);
   };
 
-  // 4. VERWIJDER FUNCTIE (De fix)
-  const deleteCard = async (cardId, e) => {
-    // Voorkom dat we per ongeluk naar de kaart navigeren als we op delete klikken
-    e.preventDefault();
-    e.stopPropagation();
+  // 4. Verwijder functie
+  const deleteCard = async (cardId) => {
+    if (!confirm("Weet je zeker dat je deze kaart wilt verwijderen?")) return;
 
-    if (!confirm("Weet je zeker dat je deze kaart wilt verwijderen? Alle geschiedenis gaat verloren.")) return;
-
-    // A. Optimistic Update (Verwijder direct uit beeld voor snelheid)
+    // Optimistic update (haal weg uit beeld)
     setCards(current => current.filter(c => c.id !== cardId));
 
-    // B. Verwijder uit Database
+    // Database actie
     const { error } = await supabase
       .from('bingo_cards')
       .delete()
       .eq('id', cardId);
 
     if (error) {
-      alert("Kon kaart niet verwijderen. Heb je de SQL code uitgevoerd?");
+      alert("Fout bij verwijderen. Controleer je database policies.");
       console.error(error);
-      fetchCards(); // Zet terug als het mislukt is
+      fetchCards(); // Zet terug als het mislukt
     }
   };
 
@@ -80,7 +75,7 @@ export default function Dashboard() {
 
   if (loading) return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50">
-      <div className="text-orange-500 font-black text-2xl animate-pulse tracking-widest uppercase italic">Laden...</div>
+      <div className="text-orange-500 font-black text-2xl animate-pulse uppercase italic">Laden...</div>
     </div>
   );
 
@@ -89,11 +84,9 @@ export default function Dashboard() {
       
       {/* NAVBAR */}
       <nav className="bg-white border-b border-gray-100 px-6 py-4 sticky top-0 z-50 flex justify-between items-center shadow-sm">
-        <div className="flex items-center gap-2">
-           <h1 className="text-xl font-black italic uppercase tracking-tighter cursor-pointer" onClick={() => navigate('/')}>
-             <span className="text-orange-500">P</span>ingo
-           </h1>
-        </div>
+        <h1 className="text-xl font-black italic uppercase cursor-pointer" onClick={() => navigate('/')}>
+          <span className="text-orange-500">P</span>ingo
+        </h1>
 
         <div className="flex items-center gap-4">
           <div className="hidden sm:flex flex-col items-end">
@@ -101,7 +94,7 @@ export default function Dashboard() {
             <span className="text-sm font-black text-gray-900 leading-none">{username}</span>
           </div>
           <div className="h-8 w-px bg-gray-100 hidden sm:block"></div>
-          <button onClick={handleLogout} className="p-2 text-gray-400 hover:text-red-500 transition-colors bg-gray-50 hover:bg-red-50 rounded-xl">
+          <button onClick={handleLogout} className="p-2 text-gray-400 hover:text-red-500 transition-colors bg-gray-50 hover:bg-red-50 rounded-xl" title="Uitloggen">
             <LogOut size={20}/>
           </button>
         </div>
@@ -136,39 +129,46 @@ export default function Dashboard() {
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
             {cards.map((card) => (
-              <div key={card.id} className="group relative bg-white rounded-[2rem] border-2 border-transparent hover:border-orange-200 shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden flex flex-col h-full">
+              <div key={card.id} className="group relative bg-white rounded-[2rem] border-2 border-transparent hover:border-orange-200 shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden flex flex-col">
                 
-                {/* Delete Button (Verschijnt op hover) */}
-                <div className="absolute top-4 right-4 z-10 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
-                  <button 
-                    onClick={(e) => deleteCard(card.id, e)} 
-                    className="bg-white/90 backdrop-blur-sm text-gray-400 p-2 rounded-xl hover:bg-red-500 hover:text-white transition shadow-sm border border-gray-100 hover:border-red-500"
-                    title="Verwijder kaart"
-                  >
-                    <Trash2 size={16} />
-                  </button>
-                </div>
-
                 <div className="p-8 flex-1 flex flex-col">
-                  <div className="flex-1">
+                  {/* Card Title */}
+                  <div className="flex-1 mb-6">
                     <h3 className="text-2xl font-black text-gray-900 uppercase italic mb-2 break-words line-clamp-2 leading-none tracking-tight">
                       {card.title}
                     </h3>
-                    <p className="text-gray-400 text-[10px] font-bold uppercase tracking-widest mb-6 flex items-center gap-2">
-                       {new Date(card.created_at).toLocaleDateString()}
+                    <p className="text-gray-400 text-[10px] font-bold uppercase tracking-widest flex items-center gap-2">
+                       Aangemaakt: {new Date(card.created_at).toLocaleDateString()}
                     </p>
                   </div>
                   
-                  {/* Action Buttons */}
-                  <div className="flex gap-2 mt-4">
+                  {/* Action Buttons Row */}
+                  <div className="flex gap-2 mt-auto">
+                    {/* PLAY */}
                     <button 
                       onClick={() => navigate(`/play/${card.id}`)}
-                      className="flex-1 bg-gray-50 text-gray-900 py-3 rounded-xl font-black text-xs uppercase flex items-center justify-center gap-2 hover:bg-orange-500 hover:text-white transition-all group-hover:shadow-md border border-gray-100 hover:border-orange-500"
+                      className="flex-[2] bg-orange-500 text-white py-3 rounded-xl font-black text-xs uppercase flex items-center justify-center gap-2 hover:bg-orange-600 transition-all shadow-md active:scale-95"
                     >
                       <Play size={14} fill="currentColor" /> Speel
                     </button>
-                    {/* Optioneel: Edit knop voor later */}
-                    {/* <button className="p-3 bg-gray-50 rounded-xl hover:bg-gray-100 text-gray-400 transition border border-gray-100"><Edit size={16}/></button> */}
+
+                    {/* EDIT */}
+                    <button 
+                      onClick={() => navigate(`/edit/${card.id}`)}
+                      className="flex-1 bg-gray-50 text-gray-600 py-3 rounded-xl font-black text-xs uppercase flex items-center justify-center gap-2 hover:bg-gray-200 transition-all border border-gray-100"
+                      title="Bewerk kaart"
+                    >
+                      <Edit size={16} />
+                    </button>
+
+                    {/* DELETE */}
+                    <button 
+                      onClick={() => deleteCard(card.id)}
+                      className="flex-none px-4 bg-red-50 text-red-500 py-3 rounded-xl flex items-center justify-center hover:bg-red-500 hover:text-white transition-all border border-red-50"
+                      title="Verwijder kaart"
+                    >
+                      <Trash2 size={16} />
+                    </button>
                   </div>
                 </div>
                 
