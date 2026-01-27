@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
-import { LayoutDashboard, LogOut, Menu, X, Sparkles, Users, ArrowRight, User } from 'lucide-react';
+import { LayoutDashboard, LogOut, Menu, X, Sparkles, Users, ArrowRight, User, Home } from 'lucide-react';
 
 export default function Navbar() {
   const [user, setUser] = useState(null);
@@ -92,7 +92,7 @@ export default function Navbar() {
               </span>
             </Link>
 
-            {/* Desktop Navigatie (Ongewijzigd) */}
+            {/* Desktop Navigatie */}
             <div className="hidden md:flex items-center gap-6">
               <form onSubmit={handleJoinSession} className="relative group">
                 <div className="absolute left-4 top-1/2 -translate-y-1/2 text-orange-400">
@@ -146,12 +146,12 @@ export default function Navbar() {
         </div>
       </nav>
 
-      {/* --- NIEUW MOBIEL MENU (FULLSCREEN OVERLAY) --- */}
+      {/* --- MOBIEL MENU (FULLSCREEN OVERLAY) --- */}
       {isOpen && (
         <div className="fixed inset-0 bg-white z-[50] pt-24 pb-8 px-6 flex flex-col animate-in slide-in-from-top-4 duration-300 md:hidden overflow-y-auto">
           
           {/* 1. Join Code Sectie */}
-          <div className="mb-10 w-full max-w-sm mx-auto">
+          <div className="mb-8 w-full max-w-sm mx-auto">
             <form onSubmit={handleJoinSession} className="relative">
               <input 
                 type="text"
@@ -171,7 +171,17 @@ export default function Navbar() {
           </div>
 
           {/* 2. Grote Navigatie Links */}
-          <div className="flex-1 flex flex-col items-center justify-center space-y-6 w-full max-w-sm mx-auto">
+          <div className="flex-1 flex flex-col items-center justify-start space-y-6 w-full max-w-sm mx-auto">
+            
+            {/* NIEUW: Home Link voor Mobiel */}
+            <Link 
+              to="/" 
+              onClick={() => setIsOpen(false)}
+              className="text-3xl font-black text-gray-300 hover:text-orange-500 uppercase italic tracking-tight transition-colors flex items-center gap-3"
+            >
+              <Home size={28} /> Home
+            </Link>
+
             <Link 
               to="/community" 
               onClick={() => setIsOpen(false)}
@@ -219,7 +229,7 @@ export default function Navbar() {
                   Inloggen
                 </Link>
                 <Link 
-                  to="/register" // Of login
+                  to="/register" 
                   onClick={() => setIsOpen(false)}
                   className="mt-4 w-full bg-orange-500 text-white py-4 rounded-2xl font-black text-xl uppercase tracking-widest shadow-xl shadow-orange-200 active:scale-95 transition-transform text-center"
                 >
@@ -227,6 +237,15 @@ export default function Navbar() {
                 </Link>
               </>
             )}
+
+            {/* NIEUW: Afsluitknop */}
+            <button 
+              onClick={() => setIsOpen(false)}
+              className="mt-8 text-gray-400 font-bold uppercase tracking-widest text-xs py-4 px-8 border-2 border-gray-100 rounded-2xl hover:bg-gray-50 hover:text-gray-900 transition-colors flex items-center gap-2"
+            >
+              <X size={16} /> Menu Sluiten
+            </button>
+
           </div>
 
           {/* 3. Footer in Menu */}
