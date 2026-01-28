@@ -65,20 +65,24 @@ export default function PlayBingo() {
   // --- FILTER PARTICIPANTS ---
   const displayParticipants = useMemo(() => {
     let list = [...participants];
-    // Zorg dat je jezelf altijd ziet, ook als de DB traag is
-    if (list.length === 0 && currentUserIdState && !needsName) {
-        list.push({ 
-            id: 'temp-me', 
-            user_id: currentUserIdState, 
-            user_name: guestName || 'Jij', 
-            marked_indices: marked.map((m,i)=>m?i:null).filter(x=>x!==null) 
-        });
+    // Zorg dat je jezelf altijd ziet als je net gejoined bent (voor snelle feedback)
+    if (list.length === 0 && currentUserIdState && !needsName && !loading) {
+       // Check of we er al in zitten
+       const amIInList = list.find(p => p.user_id === currentUserIdState);
+       if (!amIInList) {
+           list.push({ 
+               id: 'temp-me', 
+               user_id: currentUserIdState, 
+               user_name: guestName || 'Jij', 
+               marked_indices: marked.map((m,i)=>m?i:null).filter(x=>x!==null) 
+           });
+       }
     }
     if (gameMode === 'hall' && session?.host_id) {
         list = list.filter(p => p.user_id !== session.host_id);
     }
     return list.sort((a, b) => (b.marked_indices?.length || 0) - (a.marked_indices?.length || 0));
-  }, [participants, gameMode, session, currentUserIdState, marked, needsName, guestName]);
+  }, [participants, gameMode, session, currentUserIdState, needsName, guestName, marked, loading]);
 
   // --- BRANDING ---
   const isFullCard = marked.every(m => m);
@@ -105,7 +109,7 @@ export default function PlayBingo() {
       else if (winPattern === 'full' && isFullCard) showFlag = true;
   }
 
-  // --- INIT MET GUEST LOGIC ---
+  // --- INIT MET VERBETERDE GAST LOGICA ---
   useEffect(() => {
     if (initializationRan.current) return;
     initializationRan.current = true;
@@ -115,24 +119,26 @@ export default function PlayBingo() {
         const { data: { user } } = await supabase.auth.getUser();
         let userId = user?.id;
 
-        // GAST LOGICA
+        // IS HET EEN GAST?
         if (!userId) {
             let guestId = localStorage.getItem('pingo_guest_id');
             if (!guestId) {
-                // Maak een random UUID voor gasten (belangrijk voor DB validatie)
-                guestId = crypto.randomUUID(); 
+                guestId = crypto.randomUUID(); // Gebruik crypto UUID voor geldige ID
                 localStorage.setItem('pingo_guest_id', guestId);
-                setNeedsName(true); 
-            } else {
-                // Check of naam al bekend is
-                const savedName = localStorage.getItem('pingo_guest_name');
-                if (savedName) {
-                    setGuestName(savedName);
-                } else {
-                    setNeedsName(true);
-                }
             }
             userId = guestId;
+            
+            // Check of we al een naam hebben
+            const storedName = localStorage.getItem('pingo_guest_name');
+            if (!storedName) {
+                setNeedsName(true); // STOP HIER! Eerst naam invullen.
+                setLoading(false); // Stop loader, toon input scherm
+                currentUserIdRef.current = userId;
+                setCurrentUserIdState(userId);
+                return; // We laden de sessie pas NA de naam
+            } else {
+                setGuestName(storedName);
+            }
         }
 
         currentUserIdRef.current = userId;
@@ -145,11 +151,24 @@ export default function PlayBingo() {
     init();
   }, [id, sessionId, navigate]);
 
+  // --- HANDLE GUEST JOIN ---
+  const handleGuestJoin = async () => {
+      if (!guestName.trim()) return alert("Vul een naam in!");
+      
+      setLoading(true);
+      localStorage.setItem('pingo_guest_name', guestName);
+      setNeedsName(false);
+      
+      // Nu pas sessie laden en joinen
+      await loadSessionData(sessionId, currentUserIdRef.current, guestName);
+  };
+
   // --- HELPERS ---
   const saveGridLocally = (sId, uId, newGrid) => { try { localStorage.setItem(`pingo_grid_${sId}_${uId}`, JSON.stringify(newGrid)); } catch (e) {} };
   const getLocalGrid = (sId, uId) => { try { const saved = localStorage.getItem(`pingo_grid_${sId}_${uId}`); return saved ? JSON.parse(saved) : null; } catch (e) { return null; } };
 
-  const loadSessionData = async (sId, uId) => {
+  // --- LOAD SESSION ---
+  const loadSessionData = async (sId, uId, explicitName = null) => {
     setLoading(true);
     try {
         let { data: sessionData } = await supabase.from('bingo_sessions').select('*, bingo_cards(*)').eq('id', sId).single();
@@ -166,33 +185,26 @@ export default function PlayBingo() {
         }
 
         const isHostUser = sessionData.host_id === uId;
-        // Als we nog geen naam hebben (en niet de host zijn), wachten we met joinen
-        if (!needsName && !(sessionData.game_mode === 'hall' && isHostUser)) {
-            // Geef guestName mee als we die hebben
-            const storedName = localStorage.getItem('pingo_guest_name');
-            await joinOrRestoreParticipant(sId, sessionData.bingo_cards.items, uId, storedName);
+        
+        // Als we NIET de host zijn, moeten we joinen als deelnemer
+        if (!(sessionData.game_mode === 'hall' && isHostUser)) {
+            await joinOrRestoreParticipant(sId, sessionData.bingo_cards.items, uId, explicitName);
         }
         
         fetchParticipants(sId);
     } catch (e) { setErrorMsg("Fout bij laden sessie."); } finally { setLoading(false); }
   };
 
-  // --- HANDLE GUEST JOIN ---
-  const handleGuestJoin = async () => {
-      if (!guestName.trim()) return alert("Vul een naam in!");
-      localStorage.setItem('pingo_guest_name', guestName);
-      setNeedsName(false);
-      // Forceer join met de nieuwe naam
-      await joinOrRestoreParticipant(sessionId, card.items, currentUserIdRef.current, guestName);
-  };
-
+  // --- JOIN LOGIC (CRUCIAL FIX) ---
   const joinOrRestoreParticipant = async (sId, cardItems, uId, explicitName = null) => {
     const localGrid = getLocalGrid(sId, uId);
     if (localGrid) setGrid(localGrid); 
 
+    // Check of we al in de DB staan
     const { data: existing } = await supabase.from('session_participants').select('*').eq('session_id', sId).eq('user_id', uId).maybeSingle();
 
     if (existing) {
+        // BESTAANDE SPELER: Herstel status
         myParticipantIdRef.current = existing.id;
         if (existing.grid_snapshot?.length > 0 && JSON.stringify(localGrid) !== JSON.stringify(existing.grid_snapshot)) {
              setGrid(existing.grid_snapshot); saveGridLocally(sId, uId, existing.grid_snapshot);
@@ -205,29 +217,35 @@ export default function PlayBingo() {
             setMarked(nm); setBingoCount(checkBingoRows(nm));
         }
     } else {
-        // BEPAAL NAAM: Eerst kijken naar explicitName (net ingevuld), anders profiel
+        // NIEUWE SPELER (Of Gast die net naam heeft ingevuld)
         let username = explicitName;
         
+        // Als geen expliciete naam (bijv ingelogde user), zoek profiel
         if (!username) {
-            // Probeer profiel te halen (alleen als ingelogd)
+            // Alleen zoeken als het geen gast-ID is (gast IDs zijn lang en random)
             const { data: p } = await supabase.from('profiles').select('username').eq('id', uId).maybeSingle();
-            username = p?.username || 'Speler';
+            username = p?.username || guestName || 'Speler';
         }
 
         const g = generateGrid(cardItems, true, true); setGrid(g); saveGridLocally(sId, uId, g);
+        
         try { 
-            const { data: newP } = await supabase.from('session_participants').insert({ 
+            const { data: newP, error } = await supabase.from('session_participants').insert({ 
                 session_id: sId, 
                 user_id: uId, 
-                user_name: username, // GEBRUIK DE JUISTE NAAM
+                user_name: username, // ZEKER WETEN DAT DIT GEVULD IS
                 marked_indices: [12], 
-                grid_snapshot: g 
+                grid_snapshot: g,
+                has_bingo: false
             }).select().single();
             
+            if (error) throw error;
             if (newP) myParticipantIdRef.current = newP.id; 
-            fetchParticipants(sId); // Direct refreshen!
+            
+            // Forceer refresh van lijst
+            fetchParticipants(sId); 
         } catch (e) {
-            console.error("Join fout:", e);
+            console.error("Kon niet joinen:", e);
         }
     }
   };
@@ -341,7 +359,7 @@ export default function PlayBingo() {
                 value={guestName} 
                 onChange={(e) => setGuestName(e.target.value)} 
                 placeholder="Jouw Naam" 
-                className="w-full p-4 bg-gray-100 rounded-xl font-bold mb-4 focus:ring-4 focus:ring-orange-200 outline-none border-2 border-gray-100 text-center uppercase placeholder:text-gray-300"
+                className="w-full p-4 bg-gray-50 rounded-xl font-bold mb-4 focus:ring-4 focus:ring-orange-200 outline-none border-2 border-gray-100 text-center uppercase placeholder:text-gray-300"
               />
               <button onClick={handleGuestJoin} className="w-full bg-orange-500 text-white py-4 rounded-xl font-black uppercase hover:bg-orange-600 transition-all shadow-lg hover:shadow-orange-200 active:scale-95">Meedoen</button>
           </div>
