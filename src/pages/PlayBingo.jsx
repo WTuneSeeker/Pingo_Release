@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import { 
   ChevronLeft, Sparkles, Trophy, Crown, 
-  Grid3X3, Settings, QrCode, Copy, Check, Share2, AlertOctagon
+  Grid3X3, Settings, QrCode, Copy, Check, Share2, AlertOctagon, X
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
@@ -34,7 +34,8 @@ export default function PlayBingo() {
   
   // HOST STATE
   const [verificationClaim, setVerificationClaim] = useState(null);
-  const [winner, setWinner] = useState(null);
+  const [winner, setWinner] = useState(null); // Bevat de NAAM van de winnaar
+  const [showWinnerPopup, setShowWinnerPopup] = useState(false); // Bepaalt of de popup zichtbaar is
   const [isDrawing, setIsDrawing] = useState(false);
 
   // UI STATE
@@ -128,7 +129,12 @@ export default function PlayBingo() {
         setCurrentDraw(sessionData.current_draw);
         setDrawnItems(sessionData.drawn_items || []);
         setCard(sessionData.bingo_cards);
-        if (sessionData.status === 'finished') setWinner("Het spel is afgelopen");
+        
+        // Als spel al klaar is bij laden
+        if (sessionData.status === 'finished') {
+            setWinner("Iemand"); // Fallback naam als we te laat joinen
+            setShowWinnerPopup(true);
+        }
 
         const isHostUser = sessionData.host_id === uId;
         if (!(sessionData.game_mode === 'hall' && isHostUser)) await joinOrRestoreParticipant(sId, sessionData.bingo_cards.items, uId);
@@ -199,38 +205,68 @@ export default function PlayBingo() {
       if(!items) return []; const s = [...items].sort(()=>0.5-Math.random()).slice(0,24); s.splice(12,0,"FREE SPACE"); if(!ret) setGrid(s); if(reset) { setMarked(Object.assign(new Array(25).fill(false), {12:true})); setBingoCount(0); } return s;
   };
   const checkBingoRows = (m) => [[0,1,2,3,4],[5,6,7,8,9],[10,11,12,13,14],[15,16,17,18,19],[20,21,22,23,24],[0,5,10,15,20],[1,6,11,16,21],[2,7,12,17,22],[3,8,13,18,23],[4,9,14,19,24],[0,6,12,18,24],[4,8,12,16,20]].filter(p=>p.every(i=>m[i])).length;
-  const resetDraws = async () => { if(confirm("Reset?")) await supabase.from('bingo_sessions').update({ current_draw: null, drawn_items: [], status: 'active' }).eq('id', sessionId); setWinner(null); setVerificationClaim(null); };
+  
+  const resetDraws = async () => { 
+      if(confirm("Reset?")) {
+          await supabase.from('bingo_sessions').update({ current_draw: null, drawn_items: [], status: 'active' }).eq('id', sessionId); 
+          setWinner(null); 
+          setShowWinnerPopup(false);
+          setVerificationClaim(null); 
+      }
+  };
+  
   const fetchParticipants = async (sId) => { const { data } = await supabase.from('session_participants').select('*').eq('session_id', sId); if(data) setParticipants(data); };
   const handleSoloStart = async (cId, uId) => { try { const code = `P-${Math.random().toString(36).substring(2,6).toUpperCase()}`; const { data } = await supabase.from('bingo_sessions').insert([{ host_id: uId, card_id: cId, join_code: code, status: 'active', max_players: 1, drawn_items: [], win_pattern: '1line' }]).select().single(); navigate(`/play-session/${data.id}`, {replace:true}); } catch(e){setLoading(false);} };
 
   // --- REALTIME ---
   useEffect(() => {
     if (!sessionId) return;
-    const ch = supabase.channel(`room_${sessionId}`).on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'bingo_sessions', filter: `id=eq.${sessionId}` }, (pl) => { 
-        setSession(prev => ({...prev, ...pl.new})); 
-        if(pl.new.game_mode) setGameMode(pl.new.game_mode); 
-        if(pl.new.win_pattern) setWinPattern(pl.new.win_pattern); 
-        if(pl.new.current_draw!==undefined) setCurrentDraw(pl.new.current_draw); 
-        if(pl.new.drawn_items) setDrawnItems(pl.new.drawn_items); 
-        
-        if (pl.new.drawn_items && pl.new.drawn_items.length === 0 && pl.new.status === 'active') {
-            setWinner(null);
-            handleShuffle(); 
-        }
+    const ch = supabase.channel(`room_${sessionId}`)
+        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'bingo_sessions', filter: `id=eq.${sessionId}` }, (pl) => { 
+            setSession(prev => ({...prev, ...pl.new})); 
+            if(pl.new.game_mode) setGameMode(pl.new.game_mode); 
+            if(pl.new.win_pattern) setWinPattern(pl.new.win_pattern); 
+            if(pl.new.current_draw!==undefined) setCurrentDraw(pl.new.current_draw); 
+            if(pl.new.drawn_items) setDrawnItems(pl.new.drawn_items); 
+            
+            // RESET LOGICA
+            if (pl.new.drawn_items && pl.new.drawn_items.length === 0 && pl.new.status === 'active') {
+                setWinner(null);
+                setShowWinnerPopup(false); // Sluit popup bij reset
+                handleShuffle(); 
+            }
 
-        if(pl.new.banned_users?.includes(currentUserIdRef.current)) { setIsKickedLocal(true); setTimeout(() => window.location.href='/dashboard', 3000); } 
-        if(pl.new.status === 'finished' && !winner) setWinner("Spel Afgelopen!"); 
-    }).on('postgres_changes', { event: '*', schema: 'public', table: 'session_participants', filter: `session_id=eq.${sessionId}` }, (pl) => { 
-        if(pl.eventType !== 'DELETE') { 
-            fetchParticipants(sessionId); 
-            if(pl.new.has_bingo && isHost && !winner && gameMode === 'hall') setVerificationClaim(pl.new); 
-            if(pl.new.id === myParticipantIdRef.current && pl.new.marked_indices) { const nm=new Array(25).fill(false); pl.new.marked_indices.forEach(i=>nm[i]=true); setMarked(nm); setBingoCount(checkBingoRows(nm)); } 
-        } else if(pl.old.id === myParticipantIdRef.current) { 
-            setIsKickedLocal(true); setTimeout(() => window.location.href='/dashboard', 3000); 
-        } else setParticipants(prev => prev.filter(p => p.id !== pl.old.id)); 
-    }).on('broadcast', { event: 'false_bingo' }, () => { setIsFalseBingo(true); setTimeout(()=>setIsFalseBingo(false),3000); })
-      .on('broadcast', { event: 'game_won' }, (pl) => { setWinner(pl.payload.winnerName); confetti({ particleCount: 100, spread: 70 }); })
-      .subscribe(); 
+            if(pl.new.banned_users?.includes(currentUserIdRef.current)) { 
+                setIsKickedLocal(true); 
+                setTimeout(() => window.location.href='/dashboard', 3000); 
+            } 
+        })
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'session_participants', filter: `session_id=eq.${sessionId}` }, (pl) => { 
+            if(pl.eventType !== 'DELETE') { 
+                fetchParticipants(sessionId); 
+                if(pl.new.has_bingo && isHost && !winner && gameMode === 'hall') setVerificationClaim(pl.new); 
+                if(pl.new.id === myParticipantIdRef.current && pl.new.marked_indices) { 
+                    const nm=new Array(25).fill(false); 
+                    pl.new.marked_indices.forEach(i=>nm[i]=true); 
+                    setMarked(nm); 
+                    setBingoCount(checkBingoRows(nm)); 
+                } 
+            } else if(pl.old.id === myParticipantIdRef.current) { 
+                setIsKickedLocal(true); 
+                setTimeout(() => window.location.href='/dashboard', 3000); 
+            } else setParticipants(prev => prev.filter(p => p.id !== pl.old.id)); 
+        })
+        .on('broadcast', { event: 'false_bingo' }, () => { 
+            setIsFalseBingo(true); 
+            setTimeout(()=>setIsFalseBingo(false),3000); 
+        })
+        .on('broadcast', { event: 'game_won' }, (pl) => { 
+            // HIER WORDT DE NAAM GEZET
+            setWinner(pl.payload.winnerName); 
+            setShowWinnerPopup(true); // Open popup
+            confetti({ particleCount: 100, spread: 70 }); 
+        })
+        .subscribe(); 
     return () => supabase.removeChannel(ch); 
   }, [sessionId, isHost, winner, gameMode]);
 
@@ -240,35 +276,45 @@ export default function PlayBingo() {
   return (
     <div className="min-h-screen bg-gray-50 pb-20 font-sans text-center sm:text-left relative overflow-x-hidden">
         
-        {/* WINNER OVERLAY (Z-9999) */}
-        {winner && (
-            <div className="fixed inset-0 z-[9999] bg-black/95 flex items-center justify-center text-white text-center animate-in zoom-in p-4">
-                <div className="max-w-xl w-full">
+        {/* WINNER OVERLAY (Z-99999) */}
+        {winner && showWinnerPopup && (
+            <div className="fixed inset-0 z-[99999] bg-black/95 flex items-center justify-center text-white text-center animate-in zoom-in p-4">
+                <div className="max-w-xl w-full relative">
+                    {/* SLUIT KNOP VOOR SPELERS */}
+                    {!isHost && (
+                        <button onClick={() => setShowWinnerPopup(false)} className="absolute top-0 right-0 p-2 bg-white/10 hover:bg-white/20 rounded-full transition-colors">
+                            <X size={24} />
+                        </button>
+                    )}
+
                     <Crown size={100} className="mx-auto mb-6 text-yellow-400 animate-bounce drop-shadow-[0_0_15px_rgba(250,204,21,0.5)]"/>
                     <h1 className="text-5xl md:text-7xl font-black italic uppercase tracking-tighter mb-2 text-transparent bg-clip-text bg-gradient-to-br from-yellow-300 to-yellow-600">WINNAAR!</h1>
-                    <p className="text-sm font-bold uppercase tracking-widest opacity-60 mb-6">Gefeliciteerd</p>
+                    <p className="text-sm font-bold uppercase tracking-widest opacity-60 mb-6">Spel Afgelopen</p>
                     
                     <div className="bg-white text-gray-900 rounded-[2rem] p-6 shadow-2xl transform rotate-2">
                         <div className="text-sm font-black text-gray-400 uppercase tracking-widest mb-1">De winnaar is</div>
-                        <div className="text-3xl md:text-5xl font-black uppercase text-purple-600 break-words leading-tight">{winner === "Het spel is afgelopen" ? "Iedereen!" : winner}</div>
+                        {/* DE NAAM VAN DE WINNAAR */}
+                        <div className="text-3xl md:text-5xl font-black uppercase text-purple-600 break-words leading-tight">{winner}</div>
                     </div>
 
-                    {isHost && <button onClick={resetDraws} className="mt-12 bg-white/20 hover:bg-white text-white hover:text-black border-2 border-white px-8 py-4 rounded-xl font-black uppercase transition-all">Nieuw Spel Starten</button>}
+                    {isHost ? (
+                        <button onClick={resetDraws} className="mt-12 bg-white/20 hover:bg-white text-white hover:text-black border-2 border-white px-8 py-4 rounded-xl font-black uppercase transition-all">Nieuw Spel Starten</button>
+                    ) : (
+                        <button onClick={() => setShowWinnerPopup(false)} className="mt-12 bg-white text-black px-8 py-4 rounded-xl font-black uppercase hover:scale-105 transition-transform">Sluiten & Bekijk Kaart</button>
+                    )}
                 </div>
             </div>
         )}
         
-        {/* OTHER MODALS */}
-        {isFalseBingo && <div className="fixed inset-0 z-[9999] bg-red-600/95 flex items-center justify-center text-white text-center"><div><AlertOctagon size={100} className="mx-auto mb-4"/><h1 className="text-6xl font-black">VALSE BINGO!</h1></div></div>}
-        {isKickedLocal && <div className="fixed inset-0 z-[9999] bg-black/70 flex items-center justify-center text-white"><h2 className="text-3xl font-black">Je bent verwijderd.</h2></div>}
-        {showQR && <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80" onClick={()=>setShowQR(false)}><div className="bg-white p-8 rounded-3xl text-center"><img src={`https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${window.location.href}`} className="w-64 h-64 mix-blend-multiply"/><p className="mt-4 font-black text-2xl text-gray-900">{session?.join_code}</p></div></div>}
+        {isFalseBingo && <div className="fixed inset-0 z-[99999] bg-red-600/95 flex items-center justify-center text-white text-center"><div><AlertOctagon size={100} className="mx-auto mb-4"/><h1 className="text-6xl font-black">VALSE BINGO!</h1></div></div>}
+        {isKickedLocal && <div className="fixed inset-0 z-[99999] bg-black/70 flex items-center justify-center text-white"><h2 className="text-3xl font-black">Je bent verwijderd.</h2></div>}
+        {showQR && <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/80" onClick={()=>setShowQR(false)}><div className="bg-white p-8 rounded-3xl text-center"><img src={`https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${window.location.href}`} className="w-64 h-64 mix-blend-multiply"/><p className="mt-4 font-black text-2xl text-gray-900">{session?.join_code}</p></div></div>}
 
         {/* HEADER (Z-50) */}
         <div className="pt-8 px-6 pb-6 relative z-50">
             <div className="max-w-6xl mx-auto relative group">
                 <div className="relative z-50 bg-gray-900 rounded-[2.5rem] px-6 py-4 flex flex-col md:flex-row justify-between items-center shadow-2xl gap-4 md:gap-0">
                     <div className="absolute top-0 left-1/2 -translate-x-1/2 w-64 h-64 bg-orange-500 rounded-full blur-[120px] opacity-20 pointer-events-none"></div>
-                    
                     <div className="relative z-10 flex items-center gap-4 w-full md:w-auto">
                         <button onClick={() => navigate('/dashboard')} className="p-2 bg-gray-800 text-gray-400 rounded-xl hover:text-white"><ChevronLeft size={24} /></button>
                         <div>
@@ -278,7 +324,6 @@ export default function PlayBingo() {
                             </p>
                         </div>
                     </div>
-
                     <div className="relative z-10 flex items-center gap-2 w-full md:w-auto justify-end">
                         {isMultiplayer && (
                             <>
@@ -295,7 +340,6 @@ export default function PlayBingo() {
                     </div>
                 </div>
 
-                {/* BINGO VLAG */}
                 <div className={`absolute top-[85%] left-0 right-0 z-10 flex justify-center pointer-events-none transition-all duration-700 ease-[cubic-bezier(0.34,1.56,0.64,1)] ${showFlag ? 'translate-y-0 opacity-100' : '-translate-y-[100%] opacity-0'}`}>
                     <div className={`px-12 pt-8 pb-4 rounded-b-3xl shadow-2xl border-2 border-t-0 flex items-center justify-center gap-4 ${soloBranding.color || 'bg-orange-500 text-white border-orange-600'}`}>
                         <div className="animate-bounce">{soloBranding.icon}</div>
@@ -306,7 +350,6 @@ export default function PlayBingo() {
             </div>
         </div>
 
-        {/* CONTENT */}
         <div className="max-w-7xl mx-auto px-4 mt-32">
             {gameMode === 'hall' && isHost ? (
                 <HallHostView 
