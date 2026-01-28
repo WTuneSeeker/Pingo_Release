@@ -3,11 +3,10 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import { 
   ChevronLeft, Sparkles, Trophy, Crown, 
-  Grid3X3, Settings, QrCode, Copy, Check, Share2, AlertOctagon, X, User
+  Grid3X3, Settings, QrCode, Copy, Check, Share2, AlertOctagon, X, User, Loader2
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
-// Importeer de losse views
 import HallHostView from '../components/game_modes/HallHostView';
 import PlayerView from '../components/game_modes/PlayerView';
 
@@ -28,22 +27,20 @@ export default function PlayBingo() {
   
   // GUEST STATE
   const [guestName, setGuestName] = useState('');
-  const [needsName, setNeedsName] = useState(false); // Bepaalt of invoerscherm getoond wordt
-  const [hasJoined, setHasJoined] = useState(false); // Lokale check of we op 'Meedoen' hebben geklikt
+  const [showGuestInput, setShowGuestInput] = useState(false);
+  const [joining, setJoining] = useState(false); // Nieuw: laadstatus voor de knop
   
-  // SHARED STATE
+  // DATA
   const [currentDraw, setCurrentDraw] = useState(null);
   const [drawnItems, setDrawnItems] = useState([]); 
   const [session, setSession] = useState(null);
   const [participants, setParticipants] = useState([]);
   
-  // HOST STATE
+  // POPUPS
   const [verificationClaim, setVerificationClaim] = useState(null);
   const [winner, setWinner] = useState(null); 
   const [showWinnerPopup, setShowWinnerPopup] = useState(false); 
   const [isDrawing, setIsDrawing] = useState(false);
-
-  // UI STATE
   const [isKickedLocal, setIsKickedLocal] = useState(false);
   const [isFalseBingo, setIsFalseBingo] = useState(false);
   const [showQR, setShowQR] = useState(false);
@@ -66,8 +63,8 @@ export default function PlayBingo() {
   // --- FILTER PARTICIPANTS ---
   const displayParticipants = useMemo(() => {
     let list = [...participants];
-    // Zelf direct tonen na klikken op 'Meedoen'
-    if (list.length === 0 && currentUserIdState && hasJoined) {
+    // Zorg dat de gast zichzelf direct ziet in de lijst (optimistic update)
+    if (!loading && !showGuestInput && currentUserIdState) {
        const amIInList = list.find(p => p.user_id === currentUserIdState);
        if (!amIInList) {
            list.push({ 
@@ -82,7 +79,7 @@ export default function PlayBingo() {
         list = list.filter(p => p.user_id !== session.host_id);
     }
     return list.sort((a, b) => (b.marked_indices?.length || 0) - (a.marked_indices?.length || 0));
-  }, [participants, gameMode, session, currentUserIdState, hasJoined, guestName, marked]);
+  }, [participants, gameMode, session, currentUserIdState, showGuestInput, guestName, marked, loading]);
 
   // --- BRANDING ---
   const isFullCard = marked.every(m => m);
@@ -109,7 +106,7 @@ export default function PlayBingo() {
       else if (winPattern === 'full' && isFullCard) showFlag = true;
   }
 
-  // --- 1. INIT (HARDE GAST CHECK) ---
+  // --- 1. INIT LOGICA ---
   useEffect(() => {
     if (initializationRan.current) return;
     initializationRan.current = true;
@@ -119,7 +116,7 @@ export default function PlayBingo() {
         const { data: { user } } = await supabase.auth.getUser();
         let userId = user?.id;
 
-        // ALS GAST (GEEN ACCOUNT)
+        // GAST CHECK
         if (!userId) {
             let guestId = localStorage.getItem('pingo_guest_id');
             if (!guestId) {
@@ -128,24 +125,22 @@ export default function PlayBingo() {
             }
             userId = guestId;
             
-            // Check of er al een naam was, voor pre-fill
             const storedName = localStorage.getItem('pingo_guest_name');
-            if (storedName) setGuestName(storedName);
-
-            // FORCEER ALTIJD HET INPUT SCHERM VOOR GASTEN
-            // Tenzij we kunnen bewijzen dat ze al in DEZE sessie zitten (lastig te checken vooraf, dus veiligheidshalve input tonen)
-            setNeedsName(true); 
-            setLoading(false); // Stop loader zodat input zichtbaar wordt
             
-            currentUserIdRef.current = userId;
-            setCurrentUserIdState(userId);
-            return; // STOP HIER. Wacht op 'Meedoen' klik.
+            // HARDE STOP: Geen naam = Input Scherm
+            if (!storedName) {
+                currentUserIdRef.current = userId;
+                setCurrentUserIdState(userId);
+                setLoading(false); 
+                setShowGuestInput(true); // Toon input
+                return; // STOPPEN
+            } else {
+                setGuestName(storedName);
+            }
         }
 
-        // Als ingelogde user: ga direct door
         currentUserIdRef.current = userId;
         setCurrentUserIdState(userId);
-        setHasJoined(true); // Ingelogde users joinen auto
 
         if (sessionId) await loadSessionData(sessionId, userId);
         else if (id) await handleSoloStart(id, userId);
@@ -155,17 +150,30 @@ export default function PlayBingo() {
     init();
   }, [id, sessionId, navigate]);
 
-  // --- 2. DE JOIN KNOP ---
+  // --- 2. DE JOIN KNOP (CRUCIAAL) ---
   const handleGuestJoinSubmit = async () => {
       if (!guestName.trim()) return alert("Vul een naam in!");
       
-      setLoading(true);
-      localStorage.setItem('pingo_guest_name', guestName);
-      setNeedsName(false); // Verberg input
-      setHasJoined(true);  // Markeer als gejoined
+      setJoining(true); // Zet knop op laden
       
-      // NU PAS DATA LADEN EN DB INSCHRIJVEN
-      await loadSessionData(sessionId, currentUserIdRef.current, guestName);
+      try {
+          // PROBEER EERST TE JOINEN IN DE DB
+          const success = await joinOrRestoreParticipant(sessionId, card.items, currentUserIdRef.current, guestName);
+          
+          if (success) {
+              // Pas als het gelukt is, slaan we lokaal op en gaan we door
+              localStorage.setItem('pingo_guest_name', guestName);
+              await loadSessionData(sessionId, currentUserIdRef.current, guestName); // Laad de rest van de data
+              setShowGuestInput(false); // Verberg input
+          } else {
+              alert("Kon niet deelnemen. Controleer je verbinding.");
+          }
+      } catch (e) {
+          console.error(e);
+          alert("Er ging iets mis bij het joinen.");
+      } finally {
+          setJoining(false);
+      }
   };
 
   // --- 3. DATA LADEN ---
@@ -189,9 +197,10 @@ export default function PlayBingo() {
 
         const isHostUser = sessionData.host_id === uId;
         
-        // JOIN DE DATABASE
+        // Als we GEEN host zijn, en nog niet in de lijst staan -> Joinen
         if (!(sessionData.game_mode === 'hall' && isHostUser)) {
-            await joinOrRestoreParticipant(sId, sessionData.bingo_cards.items, uId, explicitName);
+             // We roepen dit aan, maar de return value boeit hier minder, we gaan ervan uit dat het lukt of al gelukt is
+             await joinOrRestoreParticipant(sId, sessionData.bingo_cards.items, uId, explicitName);
         }
         
         fetchParticipants(sId);
@@ -199,42 +208,44 @@ export default function PlayBingo() {
     } catch (e) { setErrorMsg("Fout bij laden sessie."); setLoading(false); }
   };
 
-  // --- 4. JOIN DB LOGICA ---
+  // --- 4. JOIN FUNCTIE (MET RETURN VALUE) ---
   const joinOrRestoreParticipant = async (sId, cardItems, uId, explicitName = null) => {
     const localGrid = getLocalGrid(sId, uId);
     if (localGrid) setGrid(localGrid); 
 
-    // Check of we al bestaan
-    const { data: existing } = await supabase.from('session_participants').select('*').eq('session_id', sId).eq('user_id', uId).maybeSingle();
+    try {
+        // Check bestaand
+        const { data: existing } = await supabase.from('session_participants').select('*').eq('session_id', sId).eq('user_id', uId).maybeSingle();
 
-    if (existing) {
-        // Al in de lijst? Update ref en lokaal
-        myParticipantIdRef.current = existing.id;
-        if (!localGrid && existing.grid_snapshot) {
-             setGrid(existing.grid_snapshot); 
-             saveGridLocally(sId, uId, existing.grid_snapshot);
-        }
-        if (existing.marked_indices) {
-            const nm = new Array(25).fill(false); existing.marked_indices.forEach(idx => nm[idx] = true);
-            setMarked(nm); setBingoCount(checkBingoRows(nm));
-        }
-        
-        // Als naam is veranderd in input, update DB
-        if (explicitName && existing.user_name !== explicitName) {
-            await supabase.from('session_participants').update({ user_name: explicitName }).eq('id', existing.id);
-        }
+        if (existing) {
+            myParticipantIdRef.current = existing.id;
+            if (existing.grid_snapshot?.length > 0 && JSON.stringify(localGrid) !== JSON.stringify(existing.grid_snapshot)) {
+                setGrid(existing.grid_snapshot); saveGridLocally(sId, uId, existing.grid_snapshot);
+            } else if (!existing.grid_snapshot?.length) {
+                const g = localGrid || generateGrid(cardItems, false, true); 
+                if(!localGrid) setGrid(g); 
+                saveGridLocally(sId, uId, g);
+                await supabase.from('session_participants').update({ grid_snapshot: g }).eq('id', existing.id);
+            }
+            if (existing.marked_indices) {
+                const nm = new Array(25).fill(false); existing.marked_indices.forEach(idx => nm[idx] = true);
+                setMarked(nm); setBingoCount(checkBingoRows(nm));
+            }
+            // Update naam indien nodig
+            if (explicitName && existing.user_name !== explicitName) {
+                await supabase.from('session_participants').update({ user_name: explicitName }).eq('id', existing.id);
+            }
+            return true; // Succes
+        } else {
+            // Nieuwe insert
+            let username = explicitName;
+            if (!username) {
+                const { data: p } = await supabase.from('profiles').select('username').eq('id', uId).maybeSingle();
+                username = p?.username || guestName || 'Speler';
+            }
 
-    } else {
-        // NIEUW: Maak aan!
-        let username = explicitName;
-        if (!username) {
-            const { data: p } = await supabase.from('profiles').select('username').eq('id', uId).maybeSingle();
-            username = p?.username || guestName || 'Speler';
-        }
-
-        const g = generateGrid(cardItems, true, true); setGrid(g); saveGridLocally(sId, uId, g);
-        
-        try { 
+            const g = generateGrid(cardItems, true, true); setGrid(g); saveGridLocally(sId, uId, g);
+            
             const { data: newP, error } = await supabase.from('session_participants').insert({ 
                 session_id: sId, 
                 user_id: uId, 
@@ -244,17 +255,22 @@ export default function PlayBingo() {
                 has_bingo: false
             }).select().single();
             
-            if (error) throw error;
+            if (error) {
+                console.error("DB Insert Error:", error);
+                return false; // Mislukt
+            }
             if (newP) myParticipantIdRef.current = newP.id; 
             
-            fetchParticipants(sId); // Update lijst direct
-        } catch (e) {
-            console.error("Join fout:", e);
+            fetchParticipants(sId);
+            return true; // Succes
         }
+    } catch (e) {
+        console.error("Join Exception:", e);
+        return false;
     }
   };
 
-  // --- HELPERS ---
+  // --- HELPERS & ACTIONS ---
   const saveGridLocally = (sId, uId, newGrid) => { try { localStorage.setItem(`pingo_grid_${sId}_${uId}`, JSON.stringify(newGrid)); } catch (e) {} };
   const getLocalGrid = (sId, uId) => { try { const saved = localStorage.getItem(`pingo_grid_${sId}_${uId}`); return saved ? JSON.parse(saved) : null; } catch (e) { return null; } };
   const generateGrid = (items, reset, ret) => { if(!items) return []; const s = [...items].sort(()=>0.5-Math.random()).slice(0,24); s.splice(12,0,"FREE SPACE"); if(!ret) setGrid(s); if(reset) { setMarked(Object.assign(new Array(25).fill(false), {12:true})); setBingoCount(0); } return s; };
@@ -291,17 +307,23 @@ export default function PlayBingo() {
   }, [sessionId, isHost, winner, gameMode]);
 
   // --- GUEST SCREEN ---
-  if (needsName) return (
+  if (showGuestInput) return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4 font-sans">
           <div className="bg-white p-8 rounded-[2.5rem] shadow-xl w-full max-w-md text-center border-4 border-orange-100 animate-in zoom-in">
               <div className="bg-orange-100 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6 text-orange-500 shadow-inner">
                   <User size={40} />
               </div>
               <h2 className="text-3xl font-black text-gray-900 italic uppercase mb-2">Welkom!</h2>
-              <p className="text-gray-400 font-bold uppercase tracking-widest text-xs mb-8">Wie speelt er mee?</p>
+              <p className="text-gray-400 font-bold uppercase tracking-widest text-xs mb-8">Kies een naam om mee te spelen</p>
               
               <input type="text" value={guestName} onChange={(e) => setGuestName(e.target.value)} placeholder="Jouw Naam" className="w-full p-4 bg-gray-100 rounded-xl font-bold mb-4 focus:ring-4 focus:ring-orange-200 outline-none border-2 border-gray-100 text-center uppercase placeholder:text-gray-300 shadow-inner"/>
-              <button onClick={handleGuestJoinSubmit} className="w-full bg-orange-500 text-white py-4 rounded-xl font-black uppercase hover:bg-orange-600 transition-all shadow-lg hover:shadow-orange-200 active:scale-95 transform">Meedoen</button>
+              <button 
+                onClick={handleGuestJoinSubmit} 
+                disabled={joining}
+                className="w-full bg-orange-500 text-white py-4 rounded-xl font-black uppercase hover:bg-orange-600 transition-all shadow-lg hover:shadow-orange-200 active:scale-95 transform disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {joining ? <><Loader2 className="animate-spin" /> Bezig...</> : "Meedoen"}
+              </button>
           </div>
       </div>
   );
@@ -311,27 +333,7 @@ export default function PlayBingo() {
 
   return (
     <div className="min-h-screen bg-gray-50 pb-20 font-sans text-center sm:text-left relative overflow-x-hidden">
-        
-        {winner && showWinnerPopup && (
-            <div className="fixed inset-0 z-[99999] bg-black/95 flex items-center justify-center text-white text-center animate-in zoom-in p-4">
-                <div className="max-w-xl w-full relative">
-                    {!isHost && <button onClick={() => setShowWinnerPopup(false)} className="absolute top-0 right-0 p-2 bg-white/10 hover:bg-white/20 rounded-full transition-colors"><X size={24} /></button>}
-                    <Crown size={100} className="mx-auto mb-6 text-yellow-400 animate-bounce drop-shadow-[0_0_15px_rgba(250,204,21,0.5)]"/>
-                    <h1 className="text-5xl md:text-7xl font-black italic uppercase tracking-tighter mb-2 text-transparent bg-clip-text bg-gradient-to-br from-yellow-300 to-yellow-600">WINNAAR!</h1>
-                    <p className="text-sm font-bold uppercase tracking-widest opacity-60 mb-6">Spel Afgelopen</p>
-                    <div className="bg-white text-gray-900 rounded-[2rem] p-6 shadow-2xl transform rotate-2 mb-8">
-                        <div className="text-sm font-black text-gray-400 uppercase tracking-widest mb-1">De winnaar is</div>
-                        <div className="text-3xl md:text-5xl font-black uppercase text-purple-600 break-words leading-tight">{winner}</div>
-                    </div>
-                    {isHost ? (
-                        <button onClick={resetDraws} className="bg-white/20 hover:bg-white text-white hover:text-black border-2 border-white px-8 py-4 rounded-xl font-black uppercase transition-all">Nieuw Spel Starten</button>
-                    ) : (
-                        <button onClick={() => setShowWinnerPopup(false)} className="bg-white text-black px-8 py-4 rounded-xl font-black uppercase hover:scale-105 transition-transform shadow-lg">Sluiten & Bekijk Kaart</button>
-                    )}
-                </div>
-            </div>
-        )}
-        
+        {winner && showWinnerPopup && <div className="fixed inset-0 z-[99999] bg-black/95 flex items-center justify-center text-white text-center animate-in zoom-in p-4"><div className="max-w-xl w-full relative">{!isHost && <button onClick={() => setShowWinnerPopup(false)} className="absolute top-0 right-0 p-2 bg-white/10 hover:bg-white/20 rounded-full transition-colors"><X size={24} /></button>}<Crown size={100} className="mx-auto mb-6 text-yellow-400 animate-bounce drop-shadow-[0_0_15px_rgba(250,204,21,0.5)]"/><h1 className="text-5xl md:text-7xl font-black italic uppercase tracking-tighter mb-2 text-transparent bg-clip-text bg-gradient-to-br from-yellow-300 to-yellow-600">WINNAAR!</h1><p className="text-sm font-bold uppercase tracking-widest opacity-60 mb-6">Spel Afgelopen</p><div className="bg-white text-gray-900 rounded-[2rem] p-6 shadow-2xl transform rotate-2 mb-8"><div className="text-sm font-black text-gray-400 uppercase tracking-widest mb-1">De winnaar is</div><div className="text-3xl md:text-5xl font-black uppercase text-purple-600 break-words leading-tight">{winner}</div></div>{isHost ? <button onClick={resetDraws} className="bg-white/20 hover:bg-white text-white hover:text-black border-2 border-white px-8 py-4 rounded-xl font-black uppercase transition-all">Nieuw Spel Starten</button> : <button onClick={() => setShowWinnerPopup(false)} className="bg-white text-black px-8 py-4 rounded-xl font-black uppercase hover:scale-105 transition-transform shadow-lg">Sluiten & Bekijk Kaart</button>}</div></div>}
         {isFalseBingo && <div className="fixed inset-0 z-[99999] bg-red-600/95 flex items-center justify-center text-white text-center"><div><AlertOctagon size={100} className="mx-auto mb-4"/><h1 className="text-6xl font-black">VALSE BINGO!</h1></div></div>}
         {isKickedLocal && <div className="fixed inset-0 z-[99999] bg-black/70 flex items-center justify-center text-white"><h2 className="text-3xl font-black">Je bent verwijderd.</h2></div>}
         {showQR && <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/80" onClick={()=>setShowQR(false)}><div className="bg-white p-8 rounded-3xl text-center"><img src={`https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${window.location.href}`} className="w-64 h-64 mix-blend-multiply"/><p className="mt-4 font-black text-2xl text-gray-900">{session?.join_code}</p></div></div>}
@@ -364,7 +366,6 @@ export default function PlayBingo() {
                         {isHost && <button onClick={()=>navigate(`/setup/${card.id}/${sessionId}`)} className="p-2.5 bg-gray-800 text-gray-400 rounded-xl hover:text-white"><Settings size={20}/></button>}
                     </div>
                 </div>
-
                 <div className={`absolute top-[85%] left-0 right-0 z-10 flex justify-center pointer-events-none transition-all duration-700 ease-[cubic-bezier(0.34,1.56,0.64,1)] ${showFlag ? 'translate-y-0 opacity-100' : '-translate-y-[100%] opacity-0'}`}>
                     <div className={`px-12 pt-8 pb-4 rounded-b-3xl shadow-2xl border-2 border-t-0 flex items-center justify-center gap-4 ${soloBranding.color || 'bg-orange-500 text-white border-orange-600'}`}>
                         <div className="animate-bounce">{soloBranding.icon}</div>
