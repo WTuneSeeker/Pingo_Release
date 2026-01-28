@@ -34,8 +34,10 @@ export default function PlayBingo() {
   
   // HOST STATE
   const [verificationClaim, setVerificationClaim] = useState(null);
+  
+  // WINNER STATE
   const [winner, setWinner] = useState(null); // Bevat de NAAM van de winnaar
-  const [showWinnerPopup, setShowWinnerPopup] = useState(false); // Bepaalt of de popup zichtbaar is
+  const [showWinnerPopup, setShowWinnerPopup] = useState(false); // Bepaalt zichtbaarheid popup
   const [isDrawing, setIsDrawing] = useState(false);
 
   // UI STATE
@@ -132,7 +134,7 @@ export default function PlayBingo() {
         
         // Als spel al klaar is bij laden
         if (sessionData.status === 'finished') {
-            setWinner("Iemand"); // Fallback naam als we te laat joinen
+            setWinner("Iemand"); // Fallback
             setShowWinnerPopup(true);
         }
 
@@ -232,7 +234,7 @@ export default function PlayBingo() {
             // RESET LOGICA
             if (pl.new.drawn_items && pl.new.drawn_items.length === 0 && pl.new.status === 'active') {
                 setWinner(null);
-                setShowWinnerPopup(false); // Sluit popup bij reset
+                setShowWinnerPopup(false); // Sluit popup bij iedereen bij reset
                 handleShuffle(); 
             }
 
@@ -261,9 +263,9 @@ export default function PlayBingo() {
             setTimeout(()=>setIsFalseBingo(false),3000); 
         })
         .on('broadcast', { event: 'game_won' }, (pl) => { 
-            // HIER WORDT DE NAAM GEZET
+            // Hier komt de naam binnen
             setWinner(pl.payload.winnerName); 
-            setShowWinnerPopup(true); // Open popup
+            setShowWinnerPopup(true); 
             confetti({ particleCount: 100, spread: 70 }); 
         })
         .subscribe(); 
@@ -276,10 +278,11 @@ export default function PlayBingo() {
   return (
     <div className="min-h-screen bg-gray-50 pb-20 font-sans text-center sm:text-left relative overflow-x-hidden">
         
-        {/* WINNER OVERLAY (Z-99999) */}
+        {/* WINNER OVERLAY - Z-INDEX 99999 (TOP PRIORITY) */}
         {winner && showWinnerPopup && (
             <div className="fixed inset-0 z-[99999] bg-black/95 flex items-center justify-center text-white text-center animate-in zoom-in p-4">
                 <div className="max-w-xl w-full relative">
+                    
                     {/* SLUIT KNOP VOOR SPELERS */}
                     {!isHost && (
                         <button onClick={() => setShowWinnerPopup(false)} className="absolute top-0 right-0 p-2 bg-white/10 hover:bg-white/20 rounded-full transition-colors">
@@ -289,18 +292,17 @@ export default function PlayBingo() {
 
                     <Crown size={100} className="mx-auto mb-6 text-yellow-400 animate-bounce drop-shadow-[0_0_15px_rgba(250,204,21,0.5)]"/>
                     <h1 className="text-5xl md:text-7xl font-black italic uppercase tracking-tighter mb-2 text-transparent bg-clip-text bg-gradient-to-br from-yellow-300 to-yellow-600">WINNAAR!</h1>
-                    <p className="text-sm font-bold uppercase tracking-widest opacity-60 mb-6">Spel Afgelopen</p>
+                    <p className="text-sm font-bold uppercase tracking-widest opacity-60 mb-6">De winnaar is bekend</p>
                     
-                    <div className="bg-white text-gray-900 rounded-[2rem] p-6 shadow-2xl transform rotate-2">
-                        <div className="text-sm font-black text-gray-400 uppercase tracking-widest mb-1">De winnaar is</div>
-                        {/* DE NAAM VAN DE WINNAAR */}
+                    <div className="bg-white text-gray-900 rounded-[2rem] p-6 shadow-2xl transform rotate-2 mb-8">
+                        <div className="text-sm font-black text-gray-400 uppercase tracking-widest mb-1">Naam</div>
                         <div className="text-3xl md:text-5xl font-black uppercase text-purple-600 break-words leading-tight">{winner}</div>
                     </div>
 
                     {isHost ? (
-                        <button onClick={resetDraws} className="mt-12 bg-white/20 hover:bg-white text-white hover:text-black border-2 border-white px-8 py-4 rounded-xl font-black uppercase transition-all">Nieuw Spel Starten</button>
+                        <button onClick={resetDraws} className="bg-white/20 hover:bg-white text-white hover:text-black border-2 border-white px-8 py-4 rounded-xl font-black uppercase transition-all">Nieuw Spel Starten</button>
                     ) : (
-                        <button onClick={() => setShowWinnerPopup(false)} className="mt-12 bg-white text-black px-8 py-4 rounded-xl font-black uppercase hover:scale-105 transition-transform">Sluiten & Bekijk Kaart</button>
+                        <button onClick={() => setShowWinnerPopup(false)} className="bg-white text-black px-8 py-4 rounded-xl font-black uppercase hover:scale-105 transition-transform shadow-lg">Sluiten</button>
                     )}
                 </div>
             </div>

@@ -43,7 +43,7 @@ export default function HallHostView({
     return (
         <div className="w-full max-w-6xl mx-auto -mt-24 relative z-20 animate-in slide-in-from-top-4 duration-500">
             {verificationClaim && (
-                // FIX: Z-INDEX 99999 - BOVEN ALLES
+                // FIX: Z-INDEX 99999 + COMPACT (max-w-lg) + FIXED (los van context)
                 <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in">
                     <div className="bg-white rounded-[2rem] p-5 w-full max-w-lg shadow-2xl border-4 border-orange-500 flex flex-col max-h-[90vh]">
                         <div className="flex justify-between items-center mb-4">
