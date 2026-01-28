@@ -21,7 +21,6 @@ export default function HallHostView({
         setVerificationClaim(null);
     };
 
-    // Helper: Bepaal welke vakjes onderdeel zijn van een winnende lijn
     const getWinningIndices = (grid, marked) => {
         if (!grid || !marked) return [];
         const rows = [[0,1,2,3,4],[5,6,7,8,9],[10,11,12,13,14],[15,16,17,18,19],[20,21,22,23,24],[0,5,10,15,20],[1,6,11,16,21],[2,7,12,17,22],[3,8,13,18,23],[4,9,14,19,24],[0,6,12,18,24],[4,8,12,16,20]];
@@ -44,20 +43,21 @@ export default function HallHostView({
     return (
         <div className="w-full max-w-6xl mx-auto -mt-24 relative z-20 animate-in slide-in-from-top-4 duration-500">
             {verificationClaim && (
-                <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in">
-                    <div className="bg-white rounded-[2rem] p-6 w-full max-w-2xl shadow-2xl border-4 border-orange-500 flex flex-col max-h-[90vh]">
+                // FIX: Z-INDEX 9999 + COMPACTERE MODAL (max-w-lg)
+                <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in">
+                    <div className="bg-white rounded-[2rem] p-5 w-full max-w-lg shadow-2xl border-4 border-orange-500 flex flex-col max-h-[90vh]">
                         <div className="flex justify-between items-center mb-4">
-                            <h2 className="text-2xl font-black uppercase italic text-gray-900 flex items-center gap-2"><AlertOctagon className="text-orange-500"/> Bingo Controle</h2>
-                            <span className="bg-orange-100 text-orange-600 px-4 py-2 rounded-xl font-black text-sm uppercase tracking-wide">{verificationClaim.user_name}</span>
+                            <h2 className="text-xl font-black uppercase italic text-gray-900 flex items-center gap-2"><AlertOctagon className="text-orange-500"/> Controle</h2>
+                            <span className="bg-orange-100 text-orange-600 px-3 py-1 rounded-xl font-black text-xs uppercase tracking-wide truncate max-w-[150px]">{verificationClaim.user_name}</span>
                         </div>
                         
-                        <div className="flex-1 overflow-y-auto bg-gray-50 rounded-2xl p-6 border-2 border-gray-100 mb-6">
-                            <div className="grid grid-cols-5 gap-3">
+                        <div className="flex-1 overflow-y-auto bg-gray-50 rounded-2xl p-4 border-2 border-gray-100 mb-4">
+                            <div className="grid grid-cols-5 gap-2">
                                 {verificationClaim?.grid_snapshot?.map((item, i) => {
                                     const isMarked = verificationClaim.marked_indices.includes(i);
                                     const isDrawn = i === 12 || drawnItems.includes(item);
                                     const isPartOfWin = winningIndices.includes(i);
-                                    const isNumber = /^\d+$/.test(item); // Check voor getal
+                                    const isNumber = /^\d+$/.test(item);
                                     
                                     let cellClass = 'bg-white text-gray-300 border-gray-200';
                                     
@@ -73,12 +73,12 @@ export default function HallHostView({
                                     }
 
                                     return (
-                                        <div key={i} className={`aspect-square flex items-center justify-center p-1 font-black uppercase text-center rounded-xl border-2 leading-tight break-words transition-all ${cellClass} ${isNumber ? 'text-lg' : 'text-[8px] sm:text-xs'}`}>
-                                            {i === 12 ? <Star size={16} fill="currentColor"/> : (
+                                        <div key={i} className={`aspect-square flex items-center justify-center p-1 font-black uppercase text-center rounded-xl border-2 leading-tight break-words transition-all ${cellClass} ${isNumber ? 'text-lg' : 'text-[7px]'}`}>
+                                            {i === 12 ? <Star size={14} fill="currentColor"/> : (
                                                 <div className="flex flex-col items-center">
                                                     <span>{item}</span>
-                                                    {isMarked && isPartOfWin && isDrawn && i !== 12 && <CheckCircle2 size={12} className="mt-1 opacity-80"/>}
-                                                    {isMarked && isPartOfWin && !isDrawn && <XCircle size={12} className="mt-1 opacity-80"/>}
+                                                    {isMarked && isPartOfWin && isDrawn && i !== 12 && <CheckCircle2 size={10} className="mt-0.5 opacity-80"/>}
+                                                    {isMarked && isPartOfWin && !isDrawn && <XCircle size={10} className="mt-0.5 opacity-80"/>}
                                                 </div>
                                             )}
                                         </div>
@@ -87,9 +87,9 @@ export default function HallHostView({
                             </div>
                         </div>
 
-                        <div className="flex gap-4">
-                            <button onClick={handleFalseBingo} className="flex-1 bg-red-50 text-red-600 border-2 border-red-100 py-4 rounded-2xl font-black uppercase text-sm hover:bg-red-500 hover:text-white transition-all flex items-center justify-center gap-2"><ThumbsDown size={20}/> Valse Bingo</button>
-                            <button onClick={handleConfirmWin} className="flex-1 bg-green-500 text-white border-2 border-green-600 py-4 rounded-2xl font-black uppercase text-sm hover:bg-green-600 transition-all shadow-xl flex items-center justify-center gap-2"><ThumbsUp size={20}/> Bevestig Winst</button>
+                        <div className="flex gap-3">
+                            <button onClick={handleFalseBingo} className="flex-1 bg-red-50 text-red-600 border-2 border-red-100 py-3 rounded-xl font-black uppercase text-xs hover:bg-red-500 hover:text-white transition-all flex items-center justify-center gap-2"><ThumbsDown size={16}/> Valse Bingo</button>
+                            <button onClick={handleConfirmWin} className="flex-1 bg-green-500 text-white border-2 border-green-600 py-3 rounded-xl font-black uppercase text-xs hover:bg-green-600 transition-all shadow-xl flex items-center justify-center gap-2"><ThumbsUp size={16}/> Goedkeuren</button>
                         </div>
                     </div>
                 </div>

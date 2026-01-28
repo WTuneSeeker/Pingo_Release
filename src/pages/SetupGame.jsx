@@ -4,7 +4,7 @@ import { supabase } from '../supabaseClient';
 import { 
   Settings, Users, ChevronLeft, Play, 
   User, CheckCircle2, Save, Tv, 
-  Minus, Plus, AlignJustify, Grid, LayoutGrid, Loader2
+  Minus, Plus, AlignJustify, Grid, LayoutGrid, Loader2, List
 } from 'lucide-react';
 
 export default function SetupGame() {
@@ -81,10 +81,15 @@ export default function SetupGame() {
       setSessionType(type);
       setGameMode(mode);
       if (type === 'group' && maxPlayers < 2) setMaxPlayers(10);
+      
+      // Reset winPattern naar logical defaults bij switch
+      if (mode === 'hall') setWinPattern('1line'); 
+      else setWinPattern('1line'); // '1line' fungeert als 'Rijen Mode' (starten bij 1 lijn)
   };
 
   const bgClass = gameMode === 'hall' ? 'bg-purple-500' : 'bg-orange-500';
   const textClass = gameMode === 'hall' ? 'text-purple-500' : 'text-orange-500';
+  const borderClass = gameMode === 'hall' ? 'border-purple-500' : 'border-orange-500';
 
   if (loading) return <div className={`min-h-screen flex items-center justify-center font-black ${textClass} animate-pulse`}>LADEN...</div>;
 
@@ -134,20 +139,44 @@ export default function SetupGame() {
 
             <div className="w-full h-px bg-gray-100"></div>
 
-            {/* 2. WIN PATROON (VOOR IEDEREEN) */}
+            {/* 2. WIN PATROON SELECTIE */}
             <div className="animate-in fade-in slide-in-from-top-4">
-                <label className={`block text-xs font-black uppercase tracking-widest mb-4 ml-2 ${textClass}`}>Winstconditie</label>
-                <div className="grid grid-cols-3 gap-3">
-                    <button onClick={() => setWinPattern('1line')} className={`flex flex-col items-center justify-center p-4 rounded-2xl border-2 transition-all ${winPattern === '1line' ? (gameMode === 'hall' ? 'border-purple-500 bg-purple-50 text-purple-700' : 'border-orange-500 bg-orange-50 text-orange-700') : 'border-gray-100 text-gray-400'}`}>
-                        <AlignJustify size={24} className="mb-2"/> <span className="text-[10px] font-black uppercase">1 Lijn</span>
-                    </button>
-                    <button onClick={() => setWinPattern('2lines')} className={`flex flex-col items-center justify-center p-4 rounded-2xl border-2 transition-all ${winPattern === '2lines' ? (gameMode === 'hall' ? 'border-purple-500 bg-purple-50 text-purple-700' : 'border-orange-500 bg-orange-50 text-orange-700') : 'border-gray-100 text-gray-400'}`}>
-                        <Grid size={24} className="mb-2"/> <span className="text-[10px] font-black uppercase">2 Lijnen</span>
-                    </button>
-                    <button onClick={() => setWinPattern('full')} className={`flex flex-col items-center justify-center p-4 rounded-2xl border-2 transition-all ${winPattern === 'full' ? (gameMode === 'hall' ? 'border-purple-500 bg-purple-50 text-purple-700' : 'border-orange-500 bg-orange-50 text-orange-700') : 'border-gray-100 text-gray-400'}`}>
-                        <LayoutGrid size={24} className="mb-2"/> <span className="text-[10px] font-black uppercase">Volle Kaart</span>
-                    </button>
-                </div>
+                <label className={`block text-xs font-black uppercase tracking-widest mb-4 ml-2 ${textClass}`}>
+                    {gameMode === 'hall' ? 'Wanneer is het Bingo?' : 'Spelmodus'}
+                </label>
+                
+                {gameMode === 'hall' ? (
+                    /* ZAAL MODUS: 3 OPTIES (1 LIJN, 2 LIJNEN, VOL) */
+                    <div className="grid grid-cols-3 gap-3">
+                        <button onClick={() => setWinPattern('1line')} className={`flex flex-col items-center justify-center p-4 rounded-2xl border-2 transition-all ${winPattern === '1line' ? 'border-purple-500 bg-purple-50 text-purple-700' : 'border-gray-100 text-gray-400'}`}>
+                            <AlignJustify size={24} className="mb-2"/> <span className="text-[10px] font-black uppercase">1 Lijn</span>
+                        </button>
+                        <button onClick={() => setWinPattern('2lines')} className={`flex flex-col items-center justify-center p-4 rounded-2xl border-2 transition-all ${winPattern === '2lines' ? 'border-purple-500 bg-purple-50 text-purple-700' : 'border-gray-100 text-gray-400'}`}>
+                            <Grid size={24} className="mb-2"/> <span className="text-[10px] font-black uppercase">2 Lijnen</span>
+                        </button>
+                        <button onClick={() => setWinPattern('full')} className={`flex flex-col items-center justify-center p-4 rounded-2xl border-2 transition-all ${winPattern === 'full' ? 'border-purple-500 bg-purple-50 text-purple-700' : 'border-gray-100 text-gray-400'}`}>
+                            <LayoutGrid size={24} className="mb-2"/> <span className="text-[10px] font-black uppercase">Volle Kaart</span>
+                        </button>
+                    </div>
+                ) : (
+                    /* SOLO/GROEP: 2 OPTIES (RIJEN MODE, VOLLE KAART) */
+                    <div className="grid grid-cols-2 gap-3">
+                        <button onClick={() => setWinPattern('1line')} className={`flex items-center justify-center gap-3 p-4 rounded-2xl border-2 transition-all ${winPattern === '1line' ? 'border-orange-500 bg-orange-50 text-orange-700' : 'border-gray-100 text-gray-400'}`}>
+                            <List size={20}/> 
+                            <div className="text-left">
+                                <span className="block text-xs font-black uppercase">Rijen Mode</span>
+                                <span className="block text-[9px] font-bold opacity-60">Bingo, Dubbel, etc.</span>
+                            </div>
+                        </button>
+                        <button onClick={() => setWinPattern('full')} className={`flex items-center justify-center gap-3 p-4 rounded-2xl border-2 transition-all ${winPattern === 'full' ? 'border-orange-500 bg-orange-50 text-orange-700' : 'border-gray-100 text-gray-400'}`}>
+                            <LayoutGrid size={20}/> 
+                            <div className="text-left">
+                                <span className="block text-xs font-black uppercase">Volle Kaart</span>
+                                <span className="block text-[9px] font-bold opacity-60">Alleen eindsprint</span>
+                            </div>
+                        </button>
+                    </div>
+                )}
             </div>
 
             {/* 3. AANTAL SPELERS (TELLER) */}
