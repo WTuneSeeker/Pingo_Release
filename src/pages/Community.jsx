@@ -54,14 +54,16 @@ export default function Community() {
     }
   };
 
-  // 2. Klik Handler
+  // 2. Klik Handler (AANGEPAST: GAAT NU NAAR SETUP)
   const handleCardClick = async (cardId) => {
     try {
+      // We tellen de klik wel als een 'play' voor de statistieken
       await supabase.rpc('increment_play_count', { card_id: cardId });
     } catch (err) {
       console.error("Kon play count niet updaten", err);
     }
-    navigate(`/play/${cardId}`);
+    // NAVIGEER NAAR DE SETUP PAGINA IPV DIRECT SPELEN
+    navigate(`/setup/${cardId}`);
   };
 
   // 3. Zoekfunctie
@@ -162,7 +164,7 @@ export default function Community() {
         }
       `}</style>
 
-      {/* --- NIEUWE HEADER & ZOEKBALK --- */}
+      {/* --- HEADER & ZOEKBALK --- */}
       <div className="pt-8 px-6 pb-6">
         <div className="max-w-6xl mx-auto bg-gray-900 rounded-[2.5rem] p-10 md:p-16 relative overflow-hidden shadow-2xl text-center">
           
