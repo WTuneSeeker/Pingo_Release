@@ -16,7 +16,13 @@ export default function HallHostView({
     };
 
     const handleConfirmWin = async () => {
-        await supabase.from('bingo_sessions').update({ status: 'finished', updated_at: new Date().toISOString() }).eq('id', sessionId);
+        // HIER SLAN WE DE NAAM OP IN DE DB (winner_name)
+        await supabase.from('bingo_sessions').update({ 
+            status: 'finished', 
+            winner_name: verificationClaim.user_name, // OPSLAAN!
+            updated_at: new Date().toISOString() 
+        }).eq('id', sessionId);
+        
         await supabase.channel(`room_live_${sessionId}`).send({ type: 'broadcast', event: 'game_won', payload: { winnerName: verificationClaim.user_name } });
         setVerificationClaim(null);
     };
@@ -43,7 +49,6 @@ export default function HallHostView({
     return (
         <div className="w-full max-w-6xl mx-auto -mt-24 relative z-20 animate-in slide-in-from-top-4 duration-500">
             {verificationClaim && (
-                // FIX: Z-INDEX 99999 + COMPACT (max-w-lg) + FIXED (los van context)
                 <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in">
                     <div className="bg-white rounded-[2rem] p-5 w-full max-w-lg shadow-2xl border-4 border-orange-500 flex flex-col max-h-[90vh]">
                         <div className="flex justify-between items-center mb-4">
@@ -95,6 +100,7 @@ export default function HallHostView({
                 </div>
             )}
 
+            {/* REST VAN DE HOST VIEW BLIJFT HETZELFDE */}
             <div className="flex flex-col-reverse lg:flex-row gap-6">
                 <div className="flex-1 bg-white rounded-[2.5rem] shadow-2xl border-4 border-purple-500 overflow-hidden relative min-h-[300px] md:min-h-[400px] flex flex-col">
                     <div className="bg-purple-500 p-3 text-center border-b border-purple-400 flex justify-between items-center px-6">
