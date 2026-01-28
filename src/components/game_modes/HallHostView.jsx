@@ -11,19 +11,21 @@ export default function HallHostView({
             return drawnItems.includes(itemText);
         });
         await supabase.from('session_participants').update({ has_bingo: false, marked_indices: validIndices, updated_at: new Date().toISOString() }).eq('id', verificationClaim.id);
-        await supabase.channel(`room_live_${sessionId}`).send({ type: 'broadcast', event: 'false_bingo', payload: {} });
+        
+        // FIX: Kanaalnaam matcht nu met PlayBingo.jsx
+        await supabase.channel(`room_${sessionId}`).send({ type: 'broadcast', event: 'false_bingo', payload: {} });
         setVerificationClaim(null);
     };
 
     const handleConfirmWin = async () => {
-        // HIER SLAN WE DE NAAM OP IN DE DB (winner_name)
         await supabase.from('bingo_sessions').update({ 
             status: 'finished', 
-            winner_name: verificationClaim.user_name, // OPSLAAN!
+            winner_name: verificationClaim.user_name, // NAAM OPSLAAN
             updated_at: new Date().toISOString() 
         }).eq('id', sessionId);
         
-        await supabase.channel(`room_live_${sessionId}`).send({ type: 'broadcast', event: 'game_won', payload: { winnerName: verificationClaim.user_name } });
+        // FIX: Kanaalnaam matcht nu met PlayBingo.jsx
+        await supabase.channel(`room_${sessionId}`).send({ type: 'broadcast', event: 'game_won', payload: { winnerName: verificationClaim.user_name } });
         setVerificationClaim(null);
     };
 
@@ -32,9 +34,7 @@ export default function HallHostView({
         const rows = [[0,1,2,3,4],[5,6,7,8,9],[10,11,12,13,14],[15,16,17,18,19],[20,21,22,23,24],[0,5,10,15,20],[1,6,11,16,21],[2,7,12,17,22],[3,8,13,18,23],[4,9,14,19,24],[0,6,12,18,24],[4,8,12,16,20]];
         let winningIndices = new Set();
 
-        if (winPattern === 'full') {
-            return marked; 
-        }
+        if (winPattern === 'full') return marked; 
 
         rows.forEach(row => {
             if (row.every(index => marked.includes(index))) {
@@ -63,29 +63,17 @@ export default function HallHostView({
                                     const isDrawn = i === 12 || drawnItems.includes(item);
                                     const isPartOfWin = winningIndices.includes(i);
                                     const isNumber = /^\d+$/.test(item);
-                                    
                                     let cellClass = 'bg-white text-gray-300 border-gray-200';
-                                    
-                                    if (i === 12) {
-                                        cellClass = 'bg-gray-800 text-white border-gray-900';
-                                    } else if (isMarked) {
+                                    if (i === 12) cellClass = 'bg-gray-800 text-white border-gray-900';
+                                    else if (isMarked) {
                                         if (isPartOfWin) {
                                             if (isDrawn) cellClass = 'bg-green-500 text-white border-green-600 shadow-md scale-105 z-10';
                                             else cellClass = 'bg-red-500 text-white border-red-600 animate-pulse';
-                                        } else {
-                                            cellClass = 'bg-gray-100 text-gray-400 border-gray-300';
-                                        }
+                                        } else cellClass = 'bg-gray-100 text-gray-400 border-gray-300';
                                     }
-
                                     return (
                                         <div key={i} className={`aspect-square flex items-center justify-center p-1 font-black uppercase text-center rounded-xl border-2 leading-tight break-words transition-all ${cellClass} ${isNumber ? 'text-lg' : 'text-[7px]'}`}>
-                                            {i === 12 ? <Star size={14} fill="currentColor"/> : (
-                                                <div className="flex flex-col items-center">
-                                                    <span>{item}</span>
-                                                    {isMarked && isPartOfWin && isDrawn && i !== 12 && <CheckCircle2 size={10} className="mt-0.5 opacity-80"/>}
-                                                    {isMarked && isPartOfWin && !isDrawn && <XCircle size={10} className="mt-0.5 opacity-80"/>}
-                                                </div>
-                                            )}
+                                            {i === 12 ? <Star size={14} fill="currentColor"/> : <span>{item}</span>}
                                         </div>
                                     )
                                 }) || <p className="col-span-5 text-center">Laden...</p>}
@@ -100,8 +88,8 @@ export default function HallHostView({
                 </div>
             )}
 
-            {/* REST VAN DE HOST VIEW BLIJFT HETZELFDE */}
             <div className="flex flex-col-reverse lg:flex-row gap-6">
+                {/* REST VAN DE LAYOUT BLIJFT GELIJK - ALLEEN CHANNEL NAAM AANGEPAST IN FUNCTIES */}
                 <div className="flex-1 bg-white rounded-[2.5rem] shadow-2xl border-4 border-purple-500 overflow-hidden relative min-h-[300px] md:min-h-[400px] flex flex-col">
                     <div className="bg-purple-500 p-3 text-center border-b border-purple-400 flex justify-between items-center px-6">
                         <h2 className="text-white font-black uppercase tracking-[0.2em] text-xs md:text-sm">{currentDraw ? "ON AIR" : "LOBBY FASE"}</h2>
@@ -120,7 +108,7 @@ export default function HallHostView({
                                 <div className="text-4xl md:text-7xl font-black text-gray-900 uppercase italic leading-tight py-4 break-words">{currentDraw}</div>
                                 <div className="mt-6 md:mt-8 flex flex-col gap-3">
                                     <button onClick={handleHostDraw} className="bg-purple-600 text-white px-8 py-4 rounded-xl font-black text-sm md:text-lg uppercase tracking-widest hover:bg-purple-500 transition-all shadow-lg active:scale-95">Trek Volgende</button>
-                                    <button onClick={async () => await supabase.channel(`room_live_${sessionId}`).send({ type: 'broadcast', event: 'false_bingo', payload: {} })} className="bg-red-50 text-red-500 border border-red-100 px-8 py-3 rounded-xl font-black text-xs md:text-sm uppercase tracking-widest hover:bg-red-500 hover:text-white transition-all active:scale-95 flex items-center justify-center gap-2"><AlertTriangle size={16}/> Alarm Test</button>
+                                    <button onClick={async () => await supabase.channel(`room_${sessionId}`).send({ type: 'broadcast', event: 'false_bingo', payload: {} })} className="bg-red-50 text-red-500 border border-red-100 px-8 py-3 rounded-xl font-black text-xs md:text-sm uppercase tracking-widest hover:bg-red-500 hover:text-white transition-all active:scale-95 flex items-center justify-center gap-2"><AlertTriangle size={16}/> Alarm Test</button>
                                 </div>
                             </div>
                         )}
