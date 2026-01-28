@@ -35,6 +35,7 @@ export default function PlayBingo() {
   // HOST STATE
   const [verificationClaim, setVerificationClaim] = useState(null);
   const [winner, setWinner] = useState(null);
+  const [isDrawing, setIsDrawing] = useState(false); // Voorkom dubbel klikken
 
   // UI STATE
   const [isKickedLocal, setIsKickedLocal] = useState(false);
@@ -59,6 +60,7 @@ export default function PlayBingo() {
   // --- FILTER PARTICIPANTS ---
   const displayParticipants = useMemo(() => {
     let list = [...participants];
+    // Tijdelijke 'me' toevoegen voor UI snelheid
     if (list.length === 0 && currentUserIdState) {
         list.push({ 
             id: 'temp-me', user_id: currentUserIdState, user_name: 'Jij (Laden...)', 
@@ -71,7 +73,7 @@ export default function PlayBingo() {
     return list.sort((a, b) => (b.marked_indices?.length || 0) - (a.marked_indices?.length || 0));
   }, [participants, gameMode, session, currentUserIdState, marked]);
 
-  // --- BRANDING & VLAG LOGICA ---
+  // --- BRANDING ---
   const isFullCard = marked.every(m => m);
   const getBranding = (rowCount, isFull) => {
     const titles = {
@@ -79,17 +81,17 @@ export default function PlayBingo() {
         1: { title: "BINGO!", icon: <Trophy size={24} />, color: "bg-orange-500 text-white shadow-xl border-orange-600" },
         12: { title: "FULL BINGO!", icon: <Crown size={24} className="text-orange-500" />, color: "bg-black border-2 border-orange-500 text-orange-500 shadow-[0_0_30px_rgba(249,115,22,0.8)] animate-pulse scale-110" }
     };
-    if (winPattern === 'full') { // Gebruik de winPattern state hier
+    if (winPattern === 'full') {
         if (isFull) return titles[12];
         return { title: "SPELEND..", icon: <Grid3X3 size={16} className="opacity-50"/>, color: "hidden" };
     }
     const level = Math.min(rowCount, 12);
     if (level === 0) return { ...titles[0], color: "hidden" }; 
-    return { ...(titles[level] || titles[1]) };
+    return { ...(titles[level] || titles[1]) }; // Alles > 0 is Bingo in standaard mode
   };
   
   const soloBranding = getBranding(bingoCount, isFullCard);
-  // Vlag tonen logica (gebaseerd op winPattern)
+  // Logica om vlag te tonen (niet in hall mode, wel als winconditie behaald is)
   let showFlag = false;
   if (gameMode !== 'hall') {
       if (winPattern === '1line' && bingoCount >= 1) showFlag = true;
@@ -97,7 +99,7 @@ export default function PlayBingo() {
       else if (winPattern === 'full' && isFullCard) showFlag = true;
   }
 
-  // --- INIT & LOAD ---
+  // --- INIT ---
   useEffect(() => {
     if (initializationRan.current) return;
     initializationRan.current = true;
@@ -118,13 +120,14 @@ export default function PlayBingo() {
   const saveGridLocally = (sId, uId, newGrid) => { try { localStorage.setItem(`pingo_grid_${sId}_${uId}`, JSON.stringify(newGrid)); } catch (e) {} };
   const getLocalGrid = (sId, uId) => { try { const saved = localStorage.getItem(`pingo_grid_${sId}_${uId}`); return saved ? JSON.parse(saved) : null; } catch (e) { return null; } };
 
+  // --- DATA LOADING ---
   const loadSessionData = async (sId, uId) => {
     setLoading(true);
     try {
         let { data: sessionData } = await supabase.from('bingo_sessions').select('*, bingo_cards(*)').eq('id', sId).single();
         setSession(sessionData);
         setGameMode(sessionData.game_mode || 'rows');
-        setWinPattern(sessionData.win_pattern || '1line'); // Laad het win patroon!
+        setWinPattern(sessionData.win_pattern || '1line'); 
         setCurrentDraw(sessionData.current_draw);
         setDrawnItems(sessionData.drawn_items || []);
         setCard(sessionData.bingo_cards);
@@ -163,12 +166,35 @@ export default function PlayBingo() {
   };
 
   // --- ACTIONS ---
+  
+  // FIX: DUBBELE ITEMS & DRAW LOGIC
   const handleHostDraw = async () => {
-    if (!card?.items || winner) return;
+    if (!card?.items || winner || isDrawing) return;
+    setIsDrawing(true); // Lock button
+
+    // Filter items die ECHT nog niet geweest zijn
     const available = card.items.filter(item => !drawnItems.includes(item));
-    if (available.length === 0) return alert("Op!");
-    const item = available[Math.floor(Math.random() * available.length)];
-    await supabase.from('bingo_sessions').update({ current_draw: item, drawn_items: [...drawnItems, item], updated_at: new Date().toISOString() }).eq('id', sessionId);
+    
+    if (available.length === 0) {
+        alert("Alle items zijn al getrokken!");
+        setIsDrawing(false);
+        return;
+    }
+
+    const randomItem = available[Math.floor(Math.random() * available.length)];
+    const newDrawnList = [...drawnItems, randomItem];
+
+    // Optimistische update lokaal
+    setDrawnItems(newDrawnList);
+    setCurrentDraw(randomItem);
+
+    await supabase.from('bingo_sessions').update({ 
+        current_draw: randomItem, 
+        drawn_items: newDrawnList, 
+        updated_at: new Date().toISOString() 
+    }).eq('id', sessionId);
+    
+    setIsDrawing(false); // Unlock button
   };
 
   const handleShuffle = async () => {
@@ -176,6 +202,7 @@ export default function PlayBingo() {
     if (myParticipantIdRef.current) { saveGridLocally(sessionId, currentUserIdRef.current, g); await supabase.from('session_participants').update({ marked_indices: [12], has_bingo: false, grid_snapshot: g }).eq('id', myParticipantIdRef.current); }
   };
 
+  // FIX: WIN LOGICA CORRECT TOEPASSEN
   const toggleTile = async (index) => {
     if (index === 12 || isKickedLocal || winner) return;
     const nm = [...marked]; nm[index] = !nm[index]; setMarked(nm);
@@ -184,8 +211,8 @@ export default function PlayBingo() {
     setBingoCount(count);
     const isFull = nm.every(m => m);
     
-    // NIEUWE WIN LOGICA GEBASEERD OP PATROON
     let hasBingo = false;
+    // Check de winstconditie die in de setup is ingesteld
     if (winPattern === '1line' && count >= 1) hasBingo = true;
     else if (winPattern === '2lines' && count >= 2) hasBingo = true;
     else if (winPattern === 'full' && isFull) hasBingo = true;
@@ -199,6 +226,7 @@ export default function PlayBingo() {
     }
   };
 
+  // --- UTILS ---
   const generateGrid = (items, reset, ret) => {
       if(!items) return []; const s = [...items].sort(()=>0.5-Math.random()).slice(0,24); s.splice(12,0,"FREE SPACE"); if(!ret) setGrid(s); if(reset) { setMarked(Object.assign(new Array(25).fill(false), {12:true})); setBingoCount(0); } return s;
   };
@@ -207,67 +235,30 @@ export default function PlayBingo() {
   const fetchParticipants = async (sId) => { const { data } = await supabase.from('session_participants').select('*').eq('session_id', sId); if(data) setParticipants(data); };
   const handleSoloStart = async (cId, uId) => { try { const code = `P-${Math.random().toString(36).substring(2,6).toUpperCase()}`; const { data } = await supabase.from('bingo_sessions').insert([{ host_id: uId, card_id: cId, join_code: code, status: 'active', max_players: 1, drawn_items: [], win_pattern: '1line' }]).select().single(); navigate(`/play-session/${data.id}`, {replace:true}); } catch(e){setLoading(false);} };
 
+  // --- REALTIME ---
   useEffect(() => {
     if (!sessionId) return;
-    const ch = supabase.channel(`room_${sessionId}`).on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'bingo_sessions', filter: `id=eq.${sessionId}` }, (pl) => { setSession(prev => ({...prev, ...pl.new})); if(pl.new.game_mode) setGameMode(pl.new.game_mode); if(pl.new.win_pattern) setWinPattern(pl.new.win_pattern); if(pl.new.current_draw!==undefined) setCurrentDraw(pl.new.current_draw); if(pl.new.banned_users?.includes(currentUserIdRef.current)) { setIsKickedLocal(true); setTimeout(() => window.location.href='/dashboard', 3000); } if(pl.new.status === 'finished' && !winner) setWinner("Spel Afgelopen!"); }).on('postgres_changes', { event: '*', schema: 'public', table: 'session_participants', filter: `session_id=eq.${sessionId}` }, (pl) => { if(pl.eventType !== 'DELETE') { fetchParticipants(sessionId); if(pl.new.has_bingo && isHost && !winner && gameMode === 'hall') setVerificationClaim(pl.new); if(pl.new.id === myParticipantIdRef.current && pl.new.marked_indices) { const nm=new Array(25).fill(false); pl.new.marked_indices.forEach(i=>nm[i]=true); setMarked(nm); setBingoCount(checkBingoRows(nm)); } } else if(pl.old.id === myParticipantIdRef.current) { setIsKickedLocal(true); setTimeout(() => window.location.href='/dashboard', 3000); } else setParticipants(prev => prev.filter(p => p.id !== pl.old.id)); }).on('broadcast', { event: 'false_bingo' }, () => { setIsFalseBingo(true); setTimeout(()=>setIsFalseBingo(false),3000); }).on('broadcast', { event: 'game_won' }, (pl) => { setWinner(pl.payload.winnerName); confetti({ particleCount: 100, spread: 70 }); }).subscribe(); return () => supabase.removeChannel(ch); }, [sessionId, isHost, winner, gameMode]);
+    const ch = supabase.channel(`room_${sessionId}`).on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'bingo_sessions', filter: `id=eq.${sessionId}` }, (pl) => { setSession(prev => ({...prev, ...pl.new})); if(pl.new.game_mode) setGameMode(pl.new.game_mode); if(pl.new.win_pattern) setWinPattern(pl.new.win_pattern); if(pl.new.current_draw!==undefined) setCurrentDraw(pl.new.current_draw); if(pl.new.drawn_items) setDrawnItems(pl.new.drawn_items); if(pl.new.banned_users?.includes(currentUserIdRef.current)) { setIsKickedLocal(true); setTimeout(() => window.location.href='/dashboard', 3000); } if(pl.new.status === 'finished' && !winner) setWinner("Spel Afgelopen!"); }).on('postgres_changes', { event: '*', schema: 'public', table: 'session_participants', filter: `session_id=eq.${sessionId}` }, (pl) => { if(pl.eventType !== 'DELETE') { fetchParticipants(sessionId); if(pl.new.has_bingo && isHost && !winner && gameMode === 'hall') setVerificationClaim(pl.new); if(pl.new.id === myParticipantIdRef.current && pl.new.marked_indices) { const nm=new Array(25).fill(false); pl.new.marked_indices.forEach(i=>nm[i]=true); setMarked(nm); setBingoCount(checkBingoRows(nm)); } } else if(pl.old.id === myParticipantIdRef.current) { setIsKickedLocal(true); setTimeout(() => window.location.href='/dashboard', 3000); } else setParticipants(prev => prev.filter(p => p.id !== pl.old.id)); }).on('broadcast', { event: 'false_bingo' }, () => { setIsFalseBingo(true); setTimeout(()=>setIsFalseBingo(false),3000); }).on('broadcast', { event: 'game_won' }, (pl) => { setWinner(pl.payload.winnerName); confetti({ particleCount: 100, spread: 70 }); }).subscribe(); return () => supabase.removeChannel(ch); }, [sessionId, isHost, winner, gameMode]);
 
   if (loading) return <div className="p-20 text-center font-black text-orange-500 animate-pulse text-2xl uppercase">Laden...</div>;
   if (errorMsg) return <div className="h-screen flex items-center justify-center flex-col gap-4 text-center"><h2 className="text-xl font-black">Oeps</h2><p>{errorMsg}</p><button onClick={()=>window.location.reload()} className="bg-orange-500 text-white px-4 py-2 rounded">Opnieuw</button></div>;
 
   return (
     <div className="min-h-screen bg-gray-50 pb-20 font-sans text-center sm:text-left relative overflow-x-hidden">
-        {/* GLOBAL OVERLAYS - NU MET Z-100 */}
-        {winner && <div className="fixed inset-0 z-[100] bg-black/90 flex items-center justify-center text-white text-center animate-in zoom-in"><div><Crown size={120} className="mx-auto mb-6 text-yellow-400 animate-bounce"/><h1 className="text-6xl font-black mb-2">WINNAAR!</h1><p className="text-3xl uppercase">{winner}</p>{isHost && <button onClick={resetDraws} className="mt-8 bg-white text-black px-6 py-3 rounded-xl font-bold">Nieuw Spel</button>}</div></div>}
         
-        {/* BINGO CHECK MODAL (Z-100 om boven header te komen) */}
-        {verificationClaim && isHost && gameMode === 'hall' && (
-            <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in">
-                <div className="bg-white rounded-[2rem] p-6 w-full max-w-2xl shadow-2xl border-4 border-orange-500 flex flex-col max-h-[90vh]">
-                    <div className="flex justify-between items-center mb-4">
-                        <h2 className="text-2xl font-black uppercase italic text-gray-900 flex items-center gap-2"><AlertOctagon className="text-orange-500"/> Bingo Controle</h2>
-                        <span className="bg-orange-100 text-orange-600 px-4 py-2 rounded-xl font-black text-sm uppercase tracking-wide">{verificationClaim.user_name}</span>
-                    </div>
-                    <div className="flex-1 overflow-y-auto bg-gray-50 rounded-2xl p-6 border-2 border-gray-100 mb-6">
-                        <div className="grid grid-cols-5 gap-3">
-                            {verificationClaim.grid_snapshot?.map((item, i) => {
-                                const isMarked = verificationClaim.marked_indices.includes(i);
-                                const isCorrect = i === 12 || (isMarked && drawnItems.includes(item));
-                                const isWrong = isMarked && !isCorrect;
-                                return (
-                                    <div key={i} className={`aspect-square flex items-center justify-center p-1 text-[8px] sm:text-xs font-black uppercase text-center rounded-xl border-2 leading-tight break-words 
-                                        ${i === 12 ? 'bg-gray-800 text-white border-gray-900' : isWrong ? 'bg-red-500 text-white border-red-600 animate-pulse' : isCorrect ? 'bg-green-500 text-white border-green-600 shadow-md' : 'bg-white text-gray-300 border-gray-200'}`}>
-                                        {i === 12 ? <Star size={16} fill="currentColor"/> : <span>{item}</span>}
-                                    </div>
-                                )
-                            })}
-                        </div>
-                    </div>
-                    <div className="flex gap-4">
-                        <button onClick={async () => {
-                            const valid = verificationClaim.marked_indices.filter(idx => idx === 12 || drawnItems.includes(verificationClaim.grid_snapshot[idx]));
-                            await supabase.from('session_participants').update({ has_bingo: false, marked_indices: valid }).eq('id', verificationClaim.id);
-                            await supabase.channel(`room_live_${sessionId}`).send({ type: 'broadcast', event: 'false_bingo', payload: {} });
-                            setVerificationClaim(null);
-                        }} className="flex-1 bg-red-50 text-red-600 border-2 border-red-100 py-4 rounded-2xl font-black uppercase text-sm hover:bg-red-500 hover:text-white transition-all flex items-center justify-center gap-2"><ThumbsDown size={20}/> Valse Bingo</button>
-                        <button onClick={async () => {
-                            await supabase.from('bingo_sessions').update({ status: 'finished', updated_at: new Date().toISOString() }).eq('id', sessionId);
-                            await supabase.channel(`room_live_${sessionId}`).send({ type: 'broadcast', event: 'game_won', payload: { winnerName: verificationClaim.user_name } });
-                            setVerificationClaim(null);
-                        }} className="flex-1 bg-green-500 text-white border-2 border-green-600 py-4 rounded-2xl font-black uppercase text-sm hover:bg-green-600 transition-all shadow-xl flex items-center justify-center gap-2"><ThumbsUp size={20}/> Bevestig Winst</button>
-                    </div>
-                </div>
-            </div>
-        )}
-
-        {isFalseBingo && <div className="fixed inset-0 z-[300] bg-red-600/95 flex items-center justify-center text-white text-center"><div><AlertOctagon size={100} className="mx-auto mb-4"/><h1 className="text-6xl font-black">VALSE BINGO!</h1></div></div>}
-        {isKickedLocal && <div className="fixed inset-0 z-[200] bg-black/70 flex items-center justify-center text-white"><h2 className="text-3xl font-black">Je bent verwijderd.</h2></div>}
-        {showQR && <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80" onClick={()=>setShowQR(false)}><div className="bg-white p-8 rounded-3xl text-center"><img src={`https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${window.location.href}`} className="w-64 h-64 mix-blend-multiply"/><p className="mt-4 font-black text-2xl text-gray-900">{session?.join_code}</p></div></div>}
+        {/* MODALS - MET Z-INDEX 100 OM BOVEN HEADER TE KOMEN */}
+        {winner && <div className="fixed inset-0 z-[100] bg-black/90 flex items-center justify-center text-white text-center"><div><Crown size={120} className="mx-auto mb-6 text-yellow-400 animate-bounce"/><h1 className="text-6xl font-black mb-2">WINNAAR!</h1><p className="text-3xl uppercase">{winner}</p>{isHost && <button onClick={resetDraws} className="mt-8 bg-white text-black px-6 py-3 rounded-xl font-bold">Nieuw Spel</button>}</div></div>}
+        {isFalseBingo && <div className="fixed inset-0 z-[100] bg-red-600/95 flex items-center justify-center text-white text-center"><div><AlertOctagon size={100} className="mx-auto mb-4"/><h1 className="text-6xl font-black">VALSE BINGO!</h1></div></div>}
+        {isKickedLocal && <div className="fixed inset-0 z-[100] bg-black/70 flex items-center justify-center text-white"><h2 className="text-3xl font-black">Je bent verwijderd.</h2></div>}
+        {showQR && <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80" onClick={()=>setShowQR(false)}><div className="bg-white p-8 rounded-3xl text-center"><img src={`https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${window.location.href}`} className="w-64 h-64 mix-blend-multiply"/><p className="mt-4 font-black text-2xl text-gray-900">{session?.join_code}</p></div></div>}
 
         {/* HEADER */}
         <div className="pt-8 px-6 pb-6 relative z-50">
             <div className="max-w-6xl mx-auto relative group">
-                <div className="relative z-50 bg-gray-900 rounded-[2.5rem] px-6 py-4 flex flex-col md:flex-row justify-between items-center shadow-2xl gap-4 md:gap-0">
+                <div className="relative z-20 bg-gray-900 rounded-[2.5rem] px-6 py-4 flex flex-col md:flex-row justify-between items-center shadow-2xl gap-4 md:gap-0">
                     <div className="absolute top-0 left-1/2 -translate-x-1/2 w-64 h-64 bg-orange-500 rounded-full blur-[120px] opacity-20 pointer-events-none"></div>
+                    
+                    {/* LINKS: Terug & Titel */}
                     <div className="relative z-10 flex items-center gap-4 w-full md:w-auto">
                         <button onClick={() => navigate('/dashboard')} className="p-2 bg-gray-800 text-gray-400 rounded-xl hover:text-white"><ChevronLeft size={24} /></button>
                         <div>
@@ -277,18 +268,25 @@ export default function PlayBingo() {
                             </p>
                         </div>
                     </div>
+
+                    {/* RECHTS: Code Pil & Knoppen */}
                     <div className="relative z-10 flex items-center gap-2 w-full md:w-auto justify-end">
                         {isMultiplayer && (
                             <>
                                 <button onClick={()=>setShowQR(true)} className="p-2.5 bg-gray-800 text-gray-400 rounded-xl hover:text-white"><QrCode size={20}/></button>
-                                <button onClick={() => { navigator.clipboard.writeText(session?.join_code); setCodeCopied(true); setTimeout(() => setCodeCopied(false), 2000); }} className="bg-gray-800 border border-gray-700 text-gray-300 px-4 py-2.5 rounded-xl font-black text-xs flex items-center gap-2 hover:border-orange-500 hover:text-white transition-all group">
+                                <button 
+                                    onClick={() => { navigator.clipboard.writeText(session?.join_code); setCodeCopied(true); setTimeout(() => setCodeCopied(false), 2000); }} 
+                                    className="bg-gray-800 border border-gray-700 text-gray-300 px-4 py-2.5 rounded-xl font-black text-xs flex items-center gap-2 hover:border-orange-500 hover:text-white transition-all group"
+                                >
                                     <span className="text-orange-500 opacity-70">CODE:</span>
                                     <span className="text-white text-sm tracking-wide">{session?.join_code || '...'}</span>
                                     {codeCopied ? <Check size={14} className="text-green-500"/> : <Copy size={14} className="group-hover:text-orange-500 transition-colors" />}
                                 </button>
                             </>
                         )}
-                        <button onClick={() => { navigator.clipboard.writeText(window.location.href); setCopied(true); setTimeout(() => setCopied(false), 2000); }} className="p-2.5 bg-gray-800 text-gray-400 rounded-xl hover:text-white transition-colors">{copied ? <Check size={20} className="text-green-500" /> : <Share2 size={20} />}</button>
+                        <button onClick={() => { navigator.clipboard.writeText(window.location.href); setCopied(true); setTimeout(() => setCopied(false), 2000); }} className="p-2.5 bg-gray-800 text-gray-400 rounded-xl hover:text-white transition-colors">
+                            {copied ? <Check size={20} className="text-green-500" /> : <Share2 size={20} />}
+                        </button>
                         {isHost && <button onClick={()=>navigate(`/setup/${card.id}/${sessionId}`)} className="p-2.5 bg-gray-800 text-gray-400 rounded-xl hover:text-white"><Settings size={20}/></button>}
                     </div>
                 </div>
@@ -304,7 +302,7 @@ export default function PlayBingo() {
             </div>
         </div>
 
-        {/* MAIN CONTENT */}
+        {/* CONTENT */}
         <div className="max-w-7xl mx-auto px-4 mt-32">
             {gameMode === 'hall' && isHost ? (
                 <HallHostView 

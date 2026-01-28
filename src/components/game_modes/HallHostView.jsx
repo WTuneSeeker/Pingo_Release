@@ -24,7 +24,8 @@ export default function HallHostView({
     return (
         <div className="w-full max-w-6xl mx-auto -mt-24 relative z-20 animate-in slide-in-from-top-4 duration-500">
             {verificationClaim && (
-                <div className="fixed inset-0 z-[350] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+                // CRASH FIX: Z-Index 100 + Safe Mapping
+                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
                     <div className="bg-white rounded-[2rem] p-6 w-full max-w-2xl shadow-2xl border-4 border-orange-500 flex flex-col max-h-[90vh]">
                         <div className="flex justify-between items-center mb-4">
                             <h2 className="text-2xl font-black uppercase italic text-gray-900 flex items-center gap-2"><AlertOctagon className="text-orange-500"/> Bingo Controle</h2>
@@ -32,7 +33,8 @@ export default function HallHostView({
                         </div>
                         <div className="flex-1 overflow-y-auto bg-gray-50 rounded-2xl p-6 border-2 border-gray-100 mb-6">
                             <div className="grid grid-cols-5 gap-3">
-                                {verificationClaim.grid_snapshot?.map((item, i) => {
+                                {/* SAFETY FIX: Optionele chaining ?. */}
+                                {verificationClaim?.grid_snapshot?.map((item, i) => {
                                     const isMarked = verificationClaim.marked_indices.includes(i);
                                     const isCorrect = i === 12 || (isMarked && drawnItems.includes(item));
                                     const isWrong = isMarked && !isCorrect;
@@ -42,7 +44,7 @@ export default function HallHostView({
                                             {i === 12 ? <Star size={16} fill="currentColor"/> : (<div className="flex flex-col items-center"><span>{item}</span>{isCorrect && i !== 12 && <CheckCircle2 size={12} className="mt-1 opacity-80"/>}{isWrong && <XCircle size={12} className="mt-1 opacity-80"/>}</div>)}
                                         </div>
                                     )
-                                })}
+                                }) || <p className="text-center w-full col-span-5 text-gray-400">Geen kaart data beschikbaar...</p>}
                             </div>
                         </div>
                         <div className="flex gap-4">
