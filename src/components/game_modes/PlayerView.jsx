@@ -71,13 +71,18 @@ export default function PlayerView({
                 </div>
 
                 <div className="grid grid-cols-5 gap-2 sm:gap-4 w-full mb-12">
-                  {grid.map((text, index) => (
-                    <button key={index} onClick={() => toggleTile(index)} className={`relative aspect-square flex items-center justify-center p-1 sm:p-2 text-center rounded-2xl transition-all border-2 font-black uppercase overflow-hidden ${index === 12 || marked[index] ? 'bg-orange-500 text-white border-orange-400 scale-95 shadow-inner' : 'bg-white text-gray-800 border-gray-100 hover:border-orange-200'}`}>
-                      <span className={`leading-[1.1] tracking-tight break-words hyphens-auto w-full select-none ${index === 12 ? 'text-[8px] sm:text-[10px]' : 'text-[7px] sm:text-xs'}`}>
-                        {index === 12 ? "PINGO FREE" : text}
-                      </span>
-                    </button>
-                  ))}
+                  {grid.map((text, index) => {
+                    // Check of het item een getal is
+                    const isNumber = /^\d+$/.test(text);
+                    
+                    return (
+                        <button key={index} onClick={() => toggleTile(index)} className={`relative aspect-square flex items-center justify-center p-1 sm:p-2 text-center rounded-2xl transition-all border-2 font-black uppercase overflow-hidden ${index === 12 || marked[index] ? 'bg-orange-500 text-white border-orange-400 scale-95 shadow-inner' : 'bg-white text-gray-800 border-gray-100 hover:border-orange-200'}`}>
+                          <span className={`leading-[1.1] tracking-tight break-words hyphens-auto w-full select-none ${index === 12 ? 'text-[8px] sm:text-[10px]' : isNumber ? 'text-xl sm:text-3xl' : 'text-[7px] sm:text-xs'}`}>
+                            {index === 12 ? "PINGO FREE" : text}
+                          </span>
+                        </button>
+                    );
+                  })}
                 </div>
             </div>
 
@@ -112,7 +117,7 @@ export default function PlayerView({
                                         <div className="absolute right-0 top-1/2 -translate-y-1/2 flex items-center justify-end w-16 h-full">
                                             <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-md ${hasStatus ? 'bg-white/20' : 'bg-gray-100 text-gray-400'}`}>{pCount > 0 ? pCount - 1 : 0}/24</span>
                                             {isHost && p.user_id !== myUserId && (
-                                                <button onClick={async () => { await supabase.from('bingo_sessions').update({ banned_users: [...(session.banned_users||[]), p.user_id] }).eq('id', sessionId); await supabase.from('session_participants').delete().eq('id', p.id); }} className="absolute right-0 p-1.5 rounded-lg opacity-0 group-hover:opacity-100 hover:bg-white/20 transition-all" title="Verwijder speler"><UserMinus size={14} /></button>
+                                                <button onClick={async () => { await supabase.from('bingo_sessions').update({ banned_users: [...(session.banned_users||[]), p.user_id] }).eq('id', sessionId); await supabase.from('session_participants').delete().eq('id', p.id); }} className={`absolute right-0 p-1.5 rounded-lg transition-all duration-300 transform translate-x-full opacity-0 group-hover:translate-x-0 group-hover:opacity-100 ${hasStatus ? 'hover:bg-white/20' : 'text-gray-300 hover:bg-red-50 hover:text-red-500'} `} title="Verwijder speler"><UserMinus size={14} /></button>
                                             )}
                                         </div>
                                     </div>

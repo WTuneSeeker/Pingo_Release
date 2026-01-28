@@ -1,7 +1,7 @@
 import { Users, Play, RotateCcw, Smartphone, Star, CheckCircle2, XCircle, ThumbsUp, ThumbsDown, AlertOctagon, AlertTriangle } from 'lucide-react';
 
 export default function HallHostView({ 
-    currentDraw, drawnItems, participants, verificationClaim, setVerificationClaim, handleHostDraw, resetDraws, session, sessionId, supabase 
+    currentDraw, drawnItems, participants, verificationClaim, setVerificationClaim, handleHostDraw, resetDraws, session, sessionId, supabase, winPattern 
 }) {
 
     const handleFalseBingo = async () => {
@@ -21,32 +21,72 @@ export default function HallHostView({
         setVerificationClaim(null);
     };
 
+    // Helper: Bepaal welke vakjes onderdeel zijn van een winnende lijn
+    const getWinningIndices = (grid, marked) => {
+        if (!grid || !marked) return [];
+        const rows = [[0,1,2,3,4],[5,6,7,8,9],[10,11,12,13,14],[15,16,17,18,19],[20,21,22,23,24],[0,5,10,15,20],[1,6,11,16,21],[2,7,12,17,22],[3,8,13,18,23],[4,9,14,19,24],[0,6,12,18,24],[4,8,12,16,20]];
+        let winningIndices = new Set();
+
+        if (winPattern === 'full') {
+            return marked; 
+        }
+
+        rows.forEach(row => {
+            if (row.every(index => marked.includes(index))) {
+                row.forEach(idx => winningIndices.add(idx));
+            }
+        });
+        return Array.from(winningIndices);
+    };
+
+    const winningIndices = verificationClaim ? getWinningIndices(verificationClaim.grid_snapshot, verificationClaim.marked_indices) : [];
+
     return (
         <div className="w-full max-w-6xl mx-auto -mt-24 relative z-20 animate-in slide-in-from-top-4 duration-500">
             {verificationClaim && (
-                // CRASH FIX: Z-Index 100 + Safe Mapping
-                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+                <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in">
                     <div className="bg-white rounded-[2rem] p-6 w-full max-w-2xl shadow-2xl border-4 border-orange-500 flex flex-col max-h-[90vh]">
                         <div className="flex justify-between items-center mb-4">
                             <h2 className="text-2xl font-black uppercase italic text-gray-900 flex items-center gap-2"><AlertOctagon className="text-orange-500"/> Bingo Controle</h2>
                             <span className="bg-orange-100 text-orange-600 px-4 py-2 rounded-xl font-black text-sm uppercase tracking-wide">{verificationClaim.user_name}</span>
                         </div>
+                        
                         <div className="flex-1 overflow-y-auto bg-gray-50 rounded-2xl p-6 border-2 border-gray-100 mb-6">
                             <div className="grid grid-cols-5 gap-3">
-                                {/* SAFETY FIX: Optionele chaining ?. */}
                                 {verificationClaim?.grid_snapshot?.map((item, i) => {
                                     const isMarked = verificationClaim.marked_indices.includes(i);
-                                    const isCorrect = i === 12 || (isMarked && drawnItems.includes(item));
-                                    const isWrong = isMarked && !isCorrect;
+                                    const isDrawn = i === 12 || drawnItems.includes(item);
+                                    const isPartOfWin = winningIndices.includes(i);
+                                    const isNumber = /^\d+$/.test(item); // Check voor getal
+                                    
+                                    let cellClass = 'bg-white text-gray-300 border-gray-200';
+                                    
+                                    if (i === 12) {
+                                        cellClass = 'bg-gray-800 text-white border-gray-900';
+                                    } else if (isMarked) {
+                                        if (isPartOfWin) {
+                                            if (isDrawn) cellClass = 'bg-green-500 text-white border-green-600 shadow-md scale-105 z-10';
+                                            else cellClass = 'bg-red-500 text-white border-red-600 animate-pulse';
+                                        } else {
+                                            cellClass = 'bg-gray-100 text-gray-400 border-gray-300';
+                                        }
+                                    }
+
                                     return (
-                                        <div key={i} className={`aspect-square flex items-center justify-center p-1 text-[8px] sm:text-xs font-black uppercase text-center rounded-xl border-2 leading-tight break-words 
-                                            ${i === 12 ? 'bg-gray-800 text-white border-gray-900' : isWrong ? 'bg-red-500 text-white border-red-600 animate-pulse' : isCorrect ? 'bg-green-500 text-white border-green-600 shadow-md' : 'bg-white text-gray-300 border-gray-200'}`}>
-                                            {i === 12 ? <Star size={16} fill="currentColor"/> : (<div className="flex flex-col items-center"><span>{item}</span>{isCorrect && i !== 12 && <CheckCircle2 size={12} className="mt-1 opacity-80"/>}{isWrong && <XCircle size={12} className="mt-1 opacity-80"/>}</div>)}
+                                        <div key={i} className={`aspect-square flex items-center justify-center p-1 font-black uppercase text-center rounded-xl border-2 leading-tight break-words transition-all ${cellClass} ${isNumber ? 'text-lg' : 'text-[8px] sm:text-xs'}`}>
+                                            {i === 12 ? <Star size={16} fill="currentColor"/> : (
+                                                <div className="flex flex-col items-center">
+                                                    <span>{item}</span>
+                                                    {isMarked && isPartOfWin && isDrawn && i !== 12 && <CheckCircle2 size={12} className="mt-1 opacity-80"/>}
+                                                    {isMarked && isPartOfWin && !isDrawn && <XCircle size={12} className="mt-1 opacity-80"/>}
+                                                </div>
+                                            )}
                                         </div>
                                     )
-                                }) || <p className="text-center w-full col-span-5 text-gray-400">Geen kaart data beschikbaar...</p>}
+                                }) || <p className="col-span-5 text-center">Laden...</p>}
                             </div>
                         </div>
+
                         <div className="flex gap-4">
                             <button onClick={handleFalseBingo} className="flex-1 bg-red-50 text-red-600 border-2 border-red-100 py-4 rounded-2xl font-black uppercase text-sm hover:bg-red-500 hover:text-white transition-all flex items-center justify-center gap-2"><ThumbsDown size={20}/> Valse Bingo</button>
                             <button onClick={handleConfirmWin} className="flex-1 bg-green-500 text-white border-2 border-green-600 py-4 rounded-2xl font-black uppercase text-sm hover:bg-green-600 transition-all shadow-xl flex items-center justify-center gap-2"><ThumbsUp size={20}/> Bevestig Winst</button>
