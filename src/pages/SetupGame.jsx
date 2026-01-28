@@ -3,20 +3,22 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import { 
   Settings, Users, ChevronLeft, Play, 
-  User, CheckCircle2, Save, Tv, QrCode
+  User, CheckCircle2, Save, Tv, 
+  Minus, Plus, AlignJustify, Grid, LayoutGrid, Loader2
 } from 'lucide-react';
 
 export default function SetupGame() {
-  const { cardId, sessionId } = useParams(); // sessionId is optioneel (alleen bij edit)
+  const { cardId, sessionId } = useParams();
   const navigate = useNavigate();
   
   const [card, setCard] = useState(null);
   const [loading, setLoading] = useState(true);
   
   // Settings State
-  const [gameMode, setGameMode] = useState('rows'); 
-  const [sessionType, setSessionType] = useState('solo');
-  const [maxPlayers, setMaxPlayers] = useState(10); // Default startwaarde
+  const [gameMode, setGameMode] = useState('rows'); // 'rows' of 'hall'
+  const [sessionType, setSessionType] = useState('solo'); // 'solo' of 'group'
+  const [maxPlayers, setMaxPlayers] = useState(10);
+  const [winPattern, setWinPattern] = useState('1line'); // '1line', '2lines', 'full'
   const [isProcessing, setIsProcessing] = useState(false);
 
   useEffect(() => {
@@ -25,18 +27,15 @@ export default function SetupGame() {
       const { data: cardData } = await supabase.from('bingo_cards').select('*').eq('id', cardId).single();
       if (cardData) setCard(cardData);
 
-      // 2. Als we een sessionId hebben (Edit Mode), haal de huidige settings op
+      // 2. Edit Mode: Haal bestaande settings
       if (sessionId) {
-        const { data: sessionData } = await supabase
-          .from('bingo_sessions')
-          .select('*')
-          .eq('id', sessionId)
-          .single();
+        const { data: sessionData } = await supabase.from('bingo_sessions').select('*').eq('id', sessionId).single();
 
         if (sessionData) {
           setGameMode(sessionData.game_mode || 'rows');
+          setMaxPlayers(sessionData.max_players || 10);
+          setWinPattern(sessionData.win_pattern || '1line');
           
-          // Detecteer sessie type
           if (sessionData.game_mode === 'hall') {
              setSessionType('group'); 
              setGameMode('hall');
@@ -45,9 +44,6 @@ export default function SetupGame() {
           } else {
             setSessionType('group');
           }
-          
-          // Als we editen, neem de opgeslagen waarde over, anders default 10
-          setMaxPlayers(sessionData.max_players || 10);
         }
       }
       setLoading(false);
@@ -62,124 +58,108 @@ export default function SetupGame() {
 
     const finalMaxPlayers = sessionType === 'solo' ? 1 : maxPlayers;
 
+    // Payload voor DB
+    const payload = {
+        game_mode: gameMode,
+        max_players: finalMaxPlayers,
+        win_pattern: winPattern, // Opslaan van patroon
+        updated_at: new Date().toISOString()
+    };
+
     if (sessionId) {
-      // --- UPDATE BESTAANDE SESSIE ---
-      const { error } = await supabase
-        .from('bingo_sessions')
-        .update({
-          game_mode: gameMode,
-          max_players: finalMaxPlayers,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', sessionId);
-
-      if (error) alert("Update mislukt: " + error.message);
-      else navigate(`/play-session/${sessionId}`); 
-
+      // UPDATE
+      await supabase.from('bingo_sessions').update(payload).eq('id', sessionId);
+      navigate(`/play-session/${sessionId}`); 
     } else {
-      // --- MAAK NIEUWE SESSIE ---
-      const prefix = sessionType === 'solo' ? 'SOLO-' : 'P-';
-      const randomCode = Math.random().toString(36).substring(2, 6).toUpperCase();
-      const joinCode = `${prefix}${randomCode}`;
-
-      const { data, error } = await supabase
-        .from('bingo_sessions')
-        .insert([{
+      // INSERT
+      const prefix = sessionType === 'solo' ? 'P-' : 'P-'; // Altijd P- code voor consistentie
+      const joinCode = `${prefix}${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+      
+      const { data } = await supabase.from('bingo_sessions').insert([{
           host_id: user.id,
           card_id: cardId,
           join_code: joinCode,
           status: 'active',
-          game_mode: gameMode,
-          max_players: finalMaxPlayers,
-          updated_at: new Date().toISOString()
-        }])
-        .select()
-        .single();
-
-      if (error) alert("Starten mislukt: " + error.message);
-      else navigate(`/play-session/${data.id}`);
+          ...payload
+        }]).select().single();
+      
+      navigate(`/play-session/${data.id}`);
     }
     setIsProcessing(false);
   };
 
-  // Helper om modus te switchen en state consistent te houden
+  // Helper voor selectie
   const selectType = (type, mode = 'rows') => {
       setSessionType(type);
       setGameMode(mode);
-      
-      // HIER IS DE AANPASSING:
-      // Als er naar een groepstype gewisseld wordt, zet maxPlayers automatisch op 10
-      if (type === 'group') {
-        setMaxPlayers(10);
-      }
+      if (type === 'group' && maxPlayers < 2) setMaxPlayers(10);
   };
 
-  if (loading) return <div className="min-h-screen flex items-center justify-center font-black text-orange-500 animate-pulse">LADEN...</div>;
+  // Kleur bepalen op basis van modus
+  const accentColor = gameMode === 'hall' ? 'purple' : 'orange';
+  const bgClass = gameMode === 'hall' ? 'bg-purple-500' : 'bg-orange-500';
+  const textClass = gameMode === 'hall' ? 'text-purple-500' : 'text-orange-500';
+  const borderClass = gameMode === 'hall' ? 'border-purple-500' : 'border-orange-500';
+  const ringClass = gameMode === 'hall' ? 'ring-purple-100' : 'ring-orange-100';
+
+  if (loading) return <div className={`min-h-screen flex items-center justify-center font-black ${textClass} animate-pulse`}>LADEN...</div>;
 
   return (
-    <div className="min-h-screen bg-gray-50 font-sans p-6">
-      <div className="max-w-2xl mx-auto">
+    <div className="min-h-screen bg-gray-50 font-sans flex items-center justify-center p-4">
+      
+      <div className="w-full max-w-2xl bg-white rounded-[2.5rem] shadow-2xl p-8 md:p-10 relative overflow-hidden border border-white">
         
-        <button onClick={() => navigate(-1)} className="flex items-center gap-2 text-gray-400 hover:text-gray-900 font-bold uppercase text-xs mb-8 transition-colors">
-          <ChevronLeft size={16} /> {sessionId ? 'Terug naar Spel' : 'Terug naar Dashboard'}
-        </button>
-
-        <div className="bg-white rounded-[2.5rem] p-8 md:p-12 shadow-xl border-2 border-orange-100">
-          
-          <div className="text-center mb-10">
-            <div className="bg-orange-100 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6 text-orange-500">
-              <Settings size={40} />
+        {/* HEADER: TERUG + ICON */}
+        <div className="flex justify-between items-start mb-6">
+            <button onClick={() => navigate(sessionId ? `/play-session/${sessionId}` : '/dashboard')} className="flex items-center gap-2 text-gray-400 hover:text-gray-900 font-bold uppercase text-xs transition-colors">
+                <ChevronLeft size={18} /> Terug
+            </button>
+            <div className={`w-14 h-14 rounded-2xl flex items-center justify-center ${gameMode === 'hall' ? 'bg-purple-100 text-purple-500' : 'bg-orange-100 text-orange-500'} transition-colors duration-300`}>
+                <Settings size={28} />
             </div>
-            <h1 className="text-3xl md:text-4xl font-black text-gray-900 italic uppercase mb-2">{card?.title}</h1>
-            <p className="text-gray-400 font-bold uppercase tracking-widest text-xs">
-              {sessionId ? 'Pas instellingen aan' : 'Configureer je spel'}
-            </p>
-          </div>
+        </div>
 
-          <div className="space-y-8">
+        {/* TITEL */}
+        <div className="text-center mb-10">
+            <h1 className="text-3xl md:text-4xl font-black text-gray-900 italic uppercase mb-2">{card?.title}</h1>
+            <p className="text-gray-400 font-bold uppercase tracking-widest text-xs">Instellingen</p>
+        </div>
+
+        <div className="space-y-8">
             
-            {/* 1. TYPE SESSIE */}
+            {/* 1. TYPE SESSIE KIEZEN */}
             <div>
-              <label className="block text-xs font-black text-gray-400 uppercase tracking-widest mb-4 ml-2">Kies je Speltype</label>
+              <label className="block text-xs font-black text-gray-400 uppercase tracking-widest mb-4 ml-2">Kies Speltype</label>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 
                 {/* SOLO */}
-                <button 
-                  onClick={() => selectType('solo', 'rows')}
-                  className={`p-4 rounded-2xl border-2 text-left transition-all relative overflow-hidden group ${sessionType === 'solo' ? 'border-orange-500 bg-orange-50' : 'border-gray-100 hover:border-orange-200'}`}
+                <button onClick={() => selectType('solo', 'rows')}
+                  className={`p-5 rounded-3xl border-2 text-left transition-all duration-300 relative group ${sessionType === 'solo' ? 'border-orange-500 bg-orange-50 ring-4 ring-orange-100' : 'border-gray-100 hover:border-orange-200'}`}
                 >
-                  <div className="flex justify-between items-start mb-2">
-                    <User size={24} className={sessionType === 'solo' ? 'text-orange-500' : 'text-gray-300'} />
-                    {sessionType === 'solo' && <CheckCircle2 size={18} className="text-orange-500" />}
-                  </div>
-                  <h3 className={`font-black text-sm uppercase ${sessionType === 'solo' ? 'text-gray-900' : 'text-gray-500'}`}>Solo</h3>
-                  <p className="text-[10px] font-bold text-gray-400 mt-1">Speel alleen.</p>
+                  <User size={28} className={`mb-3 ${sessionType === 'solo' ? 'text-orange-500' : 'text-gray-300'}`} />
+                  <h3 className="font-black text-sm uppercase text-gray-900">Solo</h3>
+                  <p className="text-[10px] font-bold text-gray-400 mt-1">Alleen spelen.</p>
+                  {sessionType === 'solo' && <div className="absolute top-4 right-4 text-orange-500"><CheckCircle2 size={20} fill="currentColor" className="text-white"/></div>}
                 </button>
 
-                {/* GROEP (Normaal) */}
-                <button 
-                  onClick={() => selectType('group', 'rows')}
-                  className={`p-4 rounded-2xl border-2 text-left transition-all relative overflow-hidden group ${sessionType === 'group' && gameMode !== 'hall' ? 'border-orange-500 bg-orange-50' : 'border-gray-100 hover:border-orange-200'}`}
+                {/* GROEP */}
+                <button onClick={() => selectType('group', 'rows')}
+                  className={`p-5 rounded-3xl border-2 text-left transition-all duration-300 relative group ${sessionType === 'group' && gameMode !== 'hall' ? 'border-orange-500 bg-orange-50 ring-4 ring-orange-100' : 'border-gray-100 hover:border-orange-200'}`}
                 >
-                  <div className="flex justify-between items-start mb-2">
-                    <Users size={24} className={sessionType === 'group' && gameMode !== 'hall' ? 'text-orange-500' : 'text-gray-300'} />
-                    {sessionType === 'group' && gameMode !== 'hall' && <CheckCircle2 size={18} className="text-orange-500" />}
-                  </div>
-                  <h3 className={`font-black text-sm uppercase ${sessionType === 'group' && gameMode !== 'hall' ? 'text-gray-900' : 'text-gray-500'}`}>Groep</h3>
+                  <Users size={28} className={`mb-3 ${sessionType === 'group' && gameMode !== 'hall' ? 'text-orange-500' : 'text-gray-300'}`} />
+                  <h3 className="font-black text-sm uppercase text-gray-900">Groep</h3>
                   <p className="text-[10px] font-bold text-gray-400 mt-1">Met vrienden.</p>
+                  {sessionType === 'group' && gameMode !== 'hall' && <div className="absolute top-4 right-4 text-orange-500"><CheckCircle2 size={20} fill="currentColor" className="text-white"/></div>}
                 </button>
 
-                {/* ZAAL MODUS */}
-                <button 
-                  onClick={() => selectType('group', 'hall')}
-                  className={`p-4 rounded-2xl border-2 text-left transition-all relative overflow-hidden group ${gameMode === 'hall' ? 'border-purple-500 bg-purple-50' : 'border-gray-100 hover:border-purple-200'}`}
+                {/* ZAAL */}
+                <button onClick={() => selectType('group', 'hall')}
+                  className={`p-5 rounded-3xl border-2 text-left transition-all duration-300 relative group ${gameMode === 'hall' ? 'border-purple-500 bg-purple-50 ring-4 ring-purple-100' : 'border-gray-100 hover:border-purple-200'}`}
                 >
-                  <div className="flex justify-between items-start mb-2">
-                    <Tv size={24} className={gameMode === 'hall' ? 'text-purple-500' : 'text-gray-300'} />
-                    {gameMode === 'hall' && <CheckCircle2 size={18} className="text-purple-500" />}
-                  </div>
-                  <h3 className={`font-black text-sm uppercase ${gameMode === 'hall' ? 'text-gray-900' : 'text-gray-500'}`}>Zaal Modus</h3>
-                  <p className="text-[10px] font-bold text-gray-400 mt-1">Host scherm + QR.</p>
+                  <Tv size={28} className={`mb-3 ${gameMode === 'hall' ? 'text-purple-500' : 'text-gray-300'}`} />
+                  <h3 className="font-black text-sm uppercase text-gray-900">Zaal Modus</h3>
+                  <p className="text-[10px] font-bold text-gray-400 mt-1">Groot scherm.</p>
+                  {gameMode === 'hall' && <div className="absolute top-4 right-4 text-purple-500"><CheckCircle2 size={20} fill="currentColor" className="text-white"/></div>}
                 </button>
 
               </div>
@@ -187,59 +167,73 @@ export default function SetupGame() {
 
             <div className="w-full h-px bg-gray-100"></div>
 
-            {/* 2. GAME MODE (ALLEEN ZICHTBAAR ALS NIET IN ZAAL MODUS) */}
-            {gameMode !== 'hall' && (
-                <div className="animate-in fade-in slide-in-from-top-2">
-                  <label className="block text-xs font-black text-gray-400 uppercase tracking-widest mb-4 ml-2">Winstconditie</label>
-                  <div className="flex gap-3">
-                    <button 
-                      onClick={() => setGameMode('rows')}
-                      className={`flex-1 py-4 rounded-xl font-black text-xs uppercase border-2 transition-all ${gameMode === 'rows' ? 'bg-gray-900 text-white border-gray-900 shadow-lg' : 'bg-white text-gray-400 border-gray-100'}`}
-                    >
-                      Rijen Mode
-                    </button>
-                    <button 
-                      onClick={() => setGameMode('full')}
-                      className={`flex-1 py-4 rounded-xl font-black text-xs uppercase border-2 transition-all ${gameMode === 'full' ? 'bg-gray-900 text-white border-gray-900 shadow-lg' : 'bg-white text-gray-400 border-gray-100'}`}
-                    >
-                      Volle Kaart
-                    </button>
-                  </div>
+            {/* 2. WIN PATROON (ALLEEN ZAAL) */}
+            {gameMode === 'hall' && (
+                <div className="animate-in fade-in slide-in-from-top-4">
+                    <label className="block text-xs font-black text-purple-400 uppercase tracking-widest mb-4 ml-2">Winstconditie</label>
+                    <div className="grid grid-cols-3 gap-3">
+                        <button onClick={() => setWinPattern('1line')} className={`flex flex-col items-center justify-center p-4 rounded-2xl border-2 transition-all ${winPattern === '1line' ? 'border-purple-500 bg-purple-50 text-purple-700' : 'border-gray-100 text-gray-400'}`}>
+                            <AlignJustify size={24} className="mb-2"/> <span className="text-[10px] font-black uppercase">1 Lijn</span>
+                        </button>
+                        <button onClick={() => setWinPattern('2lines')} className={`flex flex-col items-center justify-center p-4 rounded-2xl border-2 transition-all ${winPattern === '2lines' ? 'border-purple-500 bg-purple-50 text-purple-700' : 'border-gray-100 text-gray-400'}`}>
+                            <Grid size={24} className="mb-2"/> <span className="text-[10px] font-black uppercase">2 Lijnen</span>
+                        </button>
+                        <button onClick={() => setWinPattern('full')} className={`flex flex-col items-center justify-center p-4 rounded-2xl border-2 transition-all ${winPattern === 'full' ? 'border-purple-500 bg-purple-50 text-purple-700' : 'border-gray-100 text-gray-400'}`}>
+                            <LayoutGrid size={24} className="mb-2"/> <span className="text-[10px] font-black uppercase">Volle Kaart</span>
+                        </button>
+                    </div>
                 </div>
             )}
 
-            {/* 3. MAX PLAYERS (Alleen bij groep of zaal) */}
+            {/* 3. AANTAL SPELERS (TELLER IPV SLIDER) */}
             {(sessionType === 'group' || gameMode === 'hall') && (
-              <div className="animate-in slide-in-from-top-2 fade-in">
-                <div className="flex justify-between items-center mb-4 ml-2">
-                   <label className="block text-xs font-black text-gray-400 uppercase tracking-widest">Max Spelers</label>
-                   <span className="bg-orange-100 text-orange-600 px-3 py-1 rounded-lg text-xs font-black">{maxPlayers}</span>
+                <div className="animate-in fade-in slide-in-from-top-4">
+                    <div className="flex items-center justify-between bg-gray-50 p-4 rounded-2xl border border-gray-100">
+                        <div className="flex items-center gap-3">
+                            <div className={`p-2 rounded-xl ${gameMode === 'hall' ? 'bg-purple-100 text-purple-500' : 'bg-orange-100 text-orange-500'}`}>
+                                <Users size={20} />
+                            </div>
+                            <div>
+                                <p className="font-black text-xs uppercase text-gray-900">Aantal Spelers</p>
+                                <p className="text-[10px] font-bold text-gray-400">Max aantal deelnemers</p>
+                            </div>
+                        </div>
+
+                        {/* CUSTOM COUNTER INPUT */}
+                        <div className="flex items-center gap-2 bg-white p-1 rounded-xl border border-gray-200 shadow-sm">
+                            <button 
+                                onClick={() => setMaxPlayers(Math.max(2, maxPlayers - 1))}
+                                className="w-8 h-8 flex items-center justify-center rounded-lg bg-gray-100 text-gray-600 hover:bg-gray-200 font-bold active:scale-90 transition-all"
+                            >
+                                <Minus size={14} />
+                            </button>
+                            <div className="w-12 text-center font-black text-lg text-gray-900 tabular-nums">
+                                {maxPlayers}
+                            </div>
+                            <button 
+                                onClick={() => setMaxPlayers(Math.min(200, maxPlayers + 1))}
+                                className={`w-8 h-8 flex items-center justify-center rounded-lg text-white font-bold active:scale-90 transition-all ${bgClass} shadow-md`}
+                            >
+                                <Plus size={14} />
+                            </button>
+                        </div>
+                    </div>
                 </div>
-                <input 
-                  type="range" 
-                  min="2" 
-                  max="100" 
-                  value={maxPlayers} 
-                  onChange={(e) => setMaxPlayers(e.target.value)}
-                  className="w-full h-2 bg-gray-100 rounded-lg appearance-none cursor-pointer accent-orange-500"
-                />
-              </div>
             )}
 
-            {/* ACTION BUTTON */}
+            {/* SAVE BUTTON */}
             <button 
               onClick={handleSave}
               disabled={isProcessing}
-              className={`w-full text-white py-5 rounded-2xl font-black text-lg uppercase tracking-widest hover:shadow-xl transition-all active:scale-95 flex items-center justify-center gap-3 mt-8 ${gameMode === 'hall' ? 'bg-purple-600 hover:bg-purple-700 hover:shadow-purple-200' : 'bg-orange-500 hover:bg-orange-600 hover:shadow-orange-200'}`}
+              className={`w-full text-white py-5 rounded-2xl font-black text-lg uppercase tracking-widest hover:shadow-xl transition-all active:scale-95 flex items-center justify-center gap-3 mt-4 ${bgClass} shadow-lg shadow-gray-200`}
             >
               {isProcessing ? (
-                <span className="animate-pulse">Verwerken...</span>
+                <><Loader2 className="animate-spin" /> Verwerken...</>
               ) : (
-                sessionId ? <><Save fill="currentColor" size={20} /> Wijzigingen Opslaan</> : <><Play fill="currentColor" size={20} /> Start Spel</>
+                sessionId ? <><Save fill="currentColor" size={20} /> Opslaan</> : <><Play fill="currentColor" size={20} /> Start Spel</>
               )}
             </button>
 
-          </div>
         </div>
       </div>
     </div>
