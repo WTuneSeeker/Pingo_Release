@@ -10,11 +10,13 @@ import PlayBingo from './pages/PlayBingo';
 import Community from './pages/Community';
 import Join from './pages/Join';
 import SetupGame from './pages/SetupGame';
+import RankedArena from './pages/RankedArena'; // <--- NIEUWE IMPORT
 import NotFound from './pages/NotFound';
 
 // Components
 import Navbar from './components/Navbar';
 import Footer from './components/Footer';
+import ScrollToTop from './components/ScrollToTop';
 
 const PageLayout = ({ children }) => {
   const location = useLocation();
@@ -29,6 +31,8 @@ const PageLayout = ({ children }) => {
 function App() {
   return (
     <Router>
+      <ScrollToTop />
+      
       <div className="min-h-screen bg-gray-50 text-gray-900 flex flex-col">
         <Navbar />
         <PageLayout>
@@ -42,12 +46,15 @@ function App() {
             <Route path="/edit/:id" element={<Configurator />} />
             
             {/* SETUP ROUTES: */}
-            <Route path="/setup/:cardId" element={<SetupGame />} /> {/* Nieuw spel */}
-            <Route path="/setup/:cardId/:sessionId" element={<SetupGame />} /> {/* Bestaand spel aanpassen */}
+            <Route path="/setup/:cardId" element={<SetupGame />} />
+            <Route path="/setup/:cardId/:sessionId" element={<SetupGame />} />
 
             <Route path="/play/:id" element={<PlayBingo />} />
             <Route path="/play-session/:sessionId" element={<PlayBingo />} />
             
+            {/* RANKED ARENA ROUTE: */}
+            <Route path="/ranked-arena" element={<RankedArena />} /> {/* <--- TOEGEVOEGD */}
+
             <Route path="/community" element={<Community />} />
             <Route path="/join" element={<Join />} />
             <Route path="*" element={<NotFound />} />

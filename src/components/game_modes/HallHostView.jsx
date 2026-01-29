@@ -12,7 +12,10 @@ export default function HallHostView({
     session, 
     sessionId, 
     supabase, 
-    winPattern 
+    winPattern,
+    // NIEUWE PROPS VOOR HOST WIN SCHERM
+    setWinner,
+    setShowWinnerPopup
 }) {
 
     const handleFalseBingo = async () => {
@@ -29,12 +32,23 @@ export default function HallHostView({
 
     const handleConfirmWin = async () => {
         if (!verificationClaim) return;
+        
+        // 1. Update Database
         await supabase.from('bingo_sessions').update({ 
             status: 'finished', 
             winner_name: verificationClaim.user_name,
             updated_at: new Date().toISOString() 
         }).eq('id', sessionId);
+        
+        // 2. Stuur Broadcast
         await supabase.channel(`room_${sessionId}`).send({ type: 'broadcast', event: 'game_won', payload: { winnerName: verificationClaim.user_name } });
+        
+        // 3. FIX: Toon DIRECT het scherm ook voor de HOST
+        if (setWinner && setShowWinnerPopup) {
+            setWinner(verificationClaim.user_name);
+            setShowWinnerPopup(true);
+        }
+
         setVerificationClaim(null);
     };
 
@@ -99,10 +113,23 @@ export default function HallHostView({
                     </div>
                     <div className="flex-1 p-6 md:p-12 flex flex-col items-center justify-center text-center">
                         {!currentDraw ? (
-                            <div className="animate-in zoom-in">
+                            <div className="animate-in zoom-in w-full max-w-md mx-auto">
                                 <Users className="text-purple-200 w-16 h-16 md:w-24 md:h-24 mx-auto mb-4" />
                                 <h2 className="text-2xl md:text-4xl font-black text-gray-900 uppercase italic mb-2">Wachten op spelers...</h2>
-                                <button onClick={handleHostDraw} className="bg-purple-600 text-white px-8 py-4 md:px-12 md:py-5 rounded-2xl font-black text-lg md:text-xl uppercase tracking-widest hover:bg-purple-500 hover:scale-105 transition-all shadow-xl shadow-purple-200 mt-6"><Play fill="currentColor" className="inline-block mr-2 mb-1" size={20}/> Start Spel</button>
+                                
+                                {/* FIX: Toon laatste joined users */}
+                                {participants.length > 0 && (
+                                    <div className="my-6 flex flex-wrap justify-center gap-2 animate-in fade-in slide-in-from-bottom-2">
+                                        {participants.slice(-3).reverse().map(p => (
+                                            <span key={p.id} className="bg-purple-50 text-purple-600 border border-purple-100 px-3 py-1 rounded-full text-xs font-black uppercase tracking-wide flex items-center gap-1 animate-pulse">
+                                                <div className="w-2 h-2 rounded-full bg-green-500"></div>
+                                                {p.user_name}
+                                            </span>
+                                        ))}
+                                    </div>
+                                )}
+
+                                <button onClick={handleHostDraw} className="bg-purple-600 text-white px-8 py-4 md:px-12 md:py-5 rounded-2xl font-black text-lg md:text-xl uppercase tracking-widest hover:bg-purple-500 hover:scale-105 transition-all shadow-xl shadow-purple-200 mt-2"><Play fill="currentColor" className="inline-block mr-2 mb-1" size={20}/> Start Spel</button>
                             </div>
                         ) : (
                             <div className="w-full h-full flex flex-col justify-center animate-in zoom-in">

@@ -1,22 +1,36 @@
 import { useEffect, useState, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
+// Alle benodigde iconen importeren voor het avatarsysteem
+import * as Icons from 'lucide-react';
 import { 
   LayoutDashboard, LogOut, Menu, X, Sparkles, Users, 
-  ArrowRight, User, Home, Settings, ChevronDown, Clock 
+  ArrowRight, User, Home, Settings, ChevronDown, Clock,
+  Ghost, Smile, Zap, Flame, Rocket, Star, Heart, Cat, Dog, Pizza, Coffee,
+  Swords, Trophy // Extra iconen voor de Beta Arena knop
 } from 'lucide-react';
 
 export default function Navbar() {
   const [user, setUser] = useState(null);
   const [username, setUsername] = useState('');
-  const [isOpen, setIsOpen] = useState(false); // Mobiel menu
-  const [isProfileOpen, setIsProfileOpen] = useState(false); // Desktop dropdown
+  // Nieuwe states voor avatar
+  const [avatarIcon, setAvatarIcon] = useState('User');
+  const [avatarColor, setAvatarColor] = useState('bg-orange-500');
+  
+  const [isOpen, setIsOpen] = useState(false); 
+  const [isProfileOpen, setIsProfileOpen] = useState(false); 
   
   const [joinCode, setJoinCode] = useState('');
   const [loadingCode, setLoadingCode] = useState(false);
   
   const navigate = useNavigate();
   const profileMenuRef = useRef(null); 
+
+  // Helper om het icoon dynamisch te renderen
+  const RenderAvatar = ({ iconName, size = 16 }) => {
+    const IconComponent = Icons[iconName] || Icons.User;
+    return <IconComponent size={size} strokeWidth={2.5} />;
+  };
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -30,10 +44,11 @@ export default function Navbar() {
         fetchProfile(session.user.id);
       } else {
         setUsername('');
+        setAvatarIcon('User');
+        setAvatarColor('bg-orange-500');
       }
     });
 
-    // Click outside listener voor dropdown
     function handleClickOutside(event) {
       if (profileMenuRef.current && !profileMenuRef.current.contains(event.target)) {
         setIsProfileOpen(false);
@@ -47,9 +62,19 @@ export default function Navbar() {
     };
   }, []);
 
+  // Aangepast: Haalt nu ook avatar_icon en avatar_color op
   const fetchProfile = async (userId) => {
-    const { data } = await supabase.from('profiles').select('username').eq('id', userId).single();
-    if (data) setUsername(data.username);
+    const { data } = await supabase
+      .from('profiles')
+      .select('username, avatar_icon, avatar_color')
+      .eq('id', userId)
+      .single();
+      
+    if (data) {
+      setUsername(data.username);
+      if (data.avatar_icon) setAvatarIcon(data.avatar_icon);
+      if (data.avatar_color) setAvatarColor(data.avatar_color);
+    }
   };
 
   const handleLogout = async () => {
@@ -86,7 +111,6 @@ export default function Navbar() {
     }
   };
 
-  // Blokkeer scrollen als mobiel menu open is
   useEffect(() => {
     if (isOpen) {
       document.body.style.overflow = 'hidden';
@@ -97,7 +121,6 @@ export default function Navbar() {
 
   return (
     <>
-      {/* AANPASSING HIER: z-[999] in plaats van z-[50] */}
       <nav className="bg-white/80 backdrop-blur-md border-b border-gray-100 sticky top-0 z-[999]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-20 items-center">
@@ -115,7 +138,6 @@ export default function Navbar() {
             {/* Desktop Navigatie */}
             <div className="hidden md:flex items-center gap-6">
               
-              {/* Join Code Input */}
               <form onSubmit={handleJoinSession} className="relative group">
                 <div className="absolute left-4 top-1/2 -translate-y-1/2 text-orange-400">
                   <Users size={18} />
@@ -134,15 +156,24 @@ export default function Navbar() {
 
               <Link to="/community" className="text-gray-400 hover:text-orange-500 font-bold transition-colors text-sm">Community</Link>
               
+              {/* NIEUW: ARENA BETA KNOP (DESKTOP) */}
+              <Link 
+                to="/ranked-arena"
+                className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100 group"
+              >
+                <Swords size={14} className="group-hover:rotate-12 transition-transform" />
+                <span>Arena</span>
+                <span className="bg-white/20 px-1.5 py-0.5 rounded text-[8px] border border-white/20">BETA</span>
+              </Link>
+
               {user ? (
-                // --- DESKTOP USER MENU (DROPDOWN) ---
                 <div className="relative" ref={profileMenuRef}>
                   <button 
                     onClick={() => setIsProfileOpen(!isProfileOpen)}
                     className={`flex items-center gap-3 pl-1 pr-3 py-1 rounded-full border-2 transition-all ${isProfileOpen ? 'border-orange-200 bg-orange-50' : 'border-transparent hover:bg-gray-50'}`}
                   >
-                    <div className="w-8 h-8 bg-orange-500 rounded-full flex items-center justify-center text-white font-black text-xs shadow-md">
-                      {username ? username.charAt(0).toUpperCase() : <User size={16} />}
+                    <div className={`w-8 h-8 ${avatarColor} rounded-full flex items-center justify-center text-white shadow-md transition-transform group-hover:scale-105`}>
+                      <RenderAvatar iconName={avatarIcon} size={18} />
                     </div>
                     <span className="text-xs font-black text-gray-700 max-w-[100px] truncate hidden lg:block">
                       {username || 'Account'}
@@ -150,13 +181,16 @@ export default function Navbar() {
                     <ChevronDown size={14} className={`text-gray-400 transition-transform ${isProfileOpen ? 'rotate-180' : ''}`} />
                   </button>
 
-                  {/* Dropdown Content */}
                   {isProfileOpen && (
                     <div className="absolute right-0 top-full mt-2 w-64 bg-white rounded-2xl shadow-xl border-2 border-orange-100 overflow-hidden py-2 animate-in fade-in slide-in-from-top-2 z-[1000]">
-                      
-                      <div className="px-4 py-3 border-b border-gray-50 mb-2">
-                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Ingelogd als</p>
-                        <p className="font-black text-gray-900 truncate">{username}</p>
+                      <div className="px-4 py-3 border-b border-gray-50 mb-2 flex items-center gap-3">
+                        <div className={`w-10 h-10 ${avatarColor} rounded-full flex items-center justify-center text-white shadow-sm`}>
+                            <RenderAvatar iconName={avatarIcon} size={22} />
+                        </div>
+                        <div className="truncate">
+                            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Ingelogd als</p>
+                            <p className="font-black text-gray-900 truncate">{username}</p>
+                        </div>
                       </div>
 
                       <Link 
@@ -167,7 +201,6 @@ export default function Navbar() {
                         <LayoutDashboard size={18} /> Mijn Dashboard
                       </Link>
 
-                      {/* Placeholder features */}
                       <button className="w-full flex items-center gap-3 px-4 py-2.5 text-sm font-bold text-gray-400 hover:bg-gray-50 hover:text-gray-600 transition-colors text-left cursor-not-allowed">
                         <Clock size={18} /> Openstaande Sessies
                       </button>
@@ -208,11 +241,10 @@ export default function Navbar() {
         </div>
       </nav>
 
-      {/* --- MOBIEL MENU (FULLSCREEN OVERLAY) --- */}
+      {/* --- MOBIEL MENU --- */}
       {isOpen && (
         <div className="fixed inset-0 bg-white z-[1000] pt-24 pb-8 px-6 flex flex-col animate-in slide-in-from-top-4 duration-300 md:hidden overflow-y-auto">
           
-          {/* 1. Join Code Sectie */}
           <div className="mb-8 w-full max-w-sm mx-auto">
             <form onSubmit={handleJoinSession} className="relative">
               <input 
@@ -220,7 +252,7 @@ export default function Navbar() {
                 placeholder="VUL CODE IN..."
                 value={joinCode}
                 onChange={(e) => setJoinCode(e.target.value)}
-                className="w-full py-5 px-6 bg-gray-50 border-2 border-gray-100 focus:border-orange-500 rounded-3xl text-center text-xl font-black tracking-widest text-gray-900 placeholder-gray-300 focus:outline-none transition-all shadow-sm"
+                className="w-full py-5 px-6 bg-gray-50 border-2 border-gray-100 focus:border-orange-500 rounded-3xl text-center text-xl font-black tracking-widest text-gray-900 placeholder:text-gray-300 focus:outline-none transition-all shadow-sm"
                 autoFocus
               />
               <button 
@@ -232,9 +264,7 @@ export default function Navbar() {
             </form>
           </div>
 
-          {/* 2. Grote Navigatie Links */}
           <div className="flex-1 flex flex-col items-center justify-start space-y-6 w-full max-w-sm mx-auto">
-            
             <Link 
               to="/" 
               onClick={() => setIsOpen(false)}
@@ -250,6 +280,15 @@ export default function Navbar() {
             >
               Community
             </Link>
+
+            {/* NIEUW: ARENA BETA KNOP (MOBIEL) */}
+            <Link 
+              to="/ranked-arena"
+              onClick={() => setIsOpen(false)}
+              className="text-3xl font-black text-indigo-600 hover:text-indigo-700 uppercase italic tracking-tight transition-colors flex items-center gap-3"
+            >
+              <Swords size={28} /> Arena <span className="text-xs bg-indigo-100 px-2 py-1 rounded-lg">BETA</span>
+            </Link>
             
             {user ? (
               <>
@@ -261,17 +300,15 @@ export default function Navbar() {
                   Dashboard
                 </Link>
 
-                <div className="flex flex-col gap-4 w-full pt-4">
-                   <button className="text-xl font-bold text-gray-400 uppercase tracking-widest text-center cursor-not-allowed">
-                     Instellingen
-                   </button>
-                </div>
+                <button className="text-xl font-bold text-gray-400 uppercase tracking-widest text-center cursor-not-allowed">
+                  Instellingen
+                </button>
                 
-                {/* Profiel Kaartje (Logout) */}
+                {/* Mobiel Profiel Kaartje met Avatar */}
                 <div className="mt-4 w-full bg-gray-50 p-6 rounded-3xl flex items-center justify-between">
                   <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center shadow-sm text-orange-500 font-black text-lg">
-                      {username ? username.charAt(0).toUpperCase() : <User />}
+                    <div className={`w-12 h-12 ${avatarColor} rounded-full flex items-center justify-center shadow-sm text-white font-black text-lg`}>
+                        <RenderAvatar iconName={avatarIcon} size={24} />
                     </div>
                     <div className="text-left">
                       <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Ingelogd als</p>
@@ -305,7 +342,6 @@ export default function Navbar() {
               </>
             )}
 
-            {/* Afsluitknop */}
             <button 
               onClick={() => setIsOpen(false)}
               className="mt-8 text-gray-400 font-bold uppercase tracking-widest text-xs py-4 px-8 border-2 border-gray-100 rounded-2xl hover:bg-gray-50 hover:text-gray-900 transition-colors flex items-center gap-2"
@@ -315,9 +351,8 @@ export default function Navbar() {
 
           </div>
 
-          {/* 3. Footer in Menu */}
           <div className="mt-auto text-center pt-8">
-            <p className="text-gray-300 text-xs font-bold uppercase tracking-widest">© Pingo 2024</p>
+            <p className="text-gray-300 text-xs font-bold uppercase tracking-widest">© Pingo 2026</p>
           </div>
 
         </div>

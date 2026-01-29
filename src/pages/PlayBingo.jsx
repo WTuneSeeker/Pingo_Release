@@ -3,320 +3,316 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import { 
   ChevronLeft, Sparkles, Trophy, Crown, 
-  Grid3X3, Settings, QrCode, Copy, Check, Share2, AlertOctagon, X, User, Loader2, Ticket
+  Grid3X3, Settings, QrCode, Copy, Check, Share2, AlertOctagon, X
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
+// Importeer de losse views
 import HallHostView from '../components/game_modes/HallHostView';
 import PlayerView from '../components/game_modes/PlayerView';
-
-// Veilige opslag helper
-const safeStorage = {
-    getItem: (key) => { try { return localStorage.getItem(key); } catch (e) { return null; } },
-    setItem: (key, val) => { try { localStorage.setItem(key, val); } catch (e) {} }
-};
 
 export default function PlayBingo() {
   const { id, sessionId } = useParams();
   const navigate = useNavigate();
-
-  // --- FASE 1: AUTH & STATE ---
-  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
-  const [needsOnboarding, setNeedsOnboarding] = useState(true);
-  const [myUserId, setMyUserId] = useState(null);
-  const [myName, setMyName] = useState('');
-  const [isJoining, setIsJoining] = useState(false);
-
-  // --- FASE 2: DATA ---
-  const [session, setSession] = useState(null);
+  
+  // --- STATE ---
   const [card, setCard] = useState(null);
   const [grid, setGrid] = useState([]);
   const [marked, setMarked] = useState(new Array(25).fill(false));
-  const [participants, setParticipants] = useState([]);
-  const [loading, setLoading] = useState(true); // Algemene loader
+  const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState(null);
-
-  // Game State
-  const [currentDraw, setCurrentDraw] = useState(null);
-  const [drawnItems, setDrawnItems] = useState([]);
-  const [gameMode, setGameMode] = useState('rows');
+  
+  const [bingoCount, setBingoCount] = useState(0); 
+  const [gameMode, setGameMode] = useState('rows'); 
   const [winPattern, setWinPattern] = useState('1line');
-  const [bingoCount, setBingoCount] = useState(0);
-
-  // Modals & UI
-  const [winner, setWinner] = useState(null);
-  const [showWinnerPopup, setShowWinnerPopup] = useState(false);
+  
+  // SHARED STATE
+  const [currentDraw, setCurrentDraw] = useState(null);
+  const [drawnItems, setDrawnItems] = useState([]); 
+  const [session, setSession] = useState(null);
+  const [participants, setParticipants] = useState([]);
+  
+  // HOST STATE
   const [verificationClaim, setVerificationClaim] = useState(null);
-  const [isFalseBingo, setIsFalseBingo] = useState(false);
+  
+  // WINNER STATE
+  const [winner, setWinner] = useState(null); // Bevat de NAAM van de winnaar
+  const [showWinnerPopup, setShowWinnerPopup] = useState(false); // Bepaalt zichtbaarheid popup
+  const [isDrawing, setIsDrawing] = useState(false);
+
+  // UI STATE
   const [isKickedLocal, setIsKickedLocal] = useState(false);
+  const [isFalseBingo, setIsFalseBingo] = useState(false);
   const [showQR, setShowQR] = useState(false);
   const [showShuffleConfirm, setShowShuffleConfirm] = useState(false);
   const [copied, setCopied] = useState(false);
   const [codeCopied, setCodeCopied] = useState(false);
-  const [isDrawing, setIsDrawing] = useState(false);
-
-  const myParticipantIdRef = useRef(null);
-  const gridRef = useRef(grid);
   
-  // Is Host? (Veilige check)
-  const isHost = session && myUserId && session.host_id === myUserId;
+  // REFS
+  const myParticipantIdRef = useRef(null);
+  const currentUserIdRef = useRef(null);
+  const gridRef = useRef(grid); 
+  const [currentUserIdState, setCurrentUserIdState] = useState(null);
+  const initializationRan = useRef(false);
+
+  const isHost = session?.host_id === currentUserIdState;
   const isMultiplayer = session && (session.max_players > 1 || session.game_mode === 'hall');
 
   useEffect(() => { gridRef.current = grid; }, [grid]);
 
-  // ===========================================================================
-  // 1. DE "DEURWACHTER"
-  // ===========================================================================
-  useEffect(() => {
-    const checkAccess = async () => {
-        console.log("Checking access...");
-        setIsCheckingAuth(true);
-        const { data: { user } } = await supabase.auth.getUser();
-        let userId = user?.id;
-
-        if (user) {
-            userId = user.id;
-            const { data: p } = await supabase.from('profiles').select('username').eq('id', userId).single();
-            setMyUserId(userId);
-            setMyName(p?.username || 'Host');
-            await loadGameData(sessionId, userId);
-            setNeedsOnboarding(false);
-            setIsCheckingAuth(false);
-            return;
-        }
-
-        let guestId = safeStorage.getItem('pingo_guest_id');
-        if (!guestId || guestId.startsWith('guest-')) {
-            guestId = crypto.randomUUID();
-            safeStorage.setItem('pingo_guest_id', guestId);
-        }
-        userId = guestId;
-        setMyUserId(userId);
-
-        const storedName = safeStorage.getItem('pingo_guest_name');
-        if (storedName) setMyName(storedName);
-
-        // Check DB
-        const { data: existingParticipant } = await supabase
-            .from('session_participants')
-            .select('id, user_name')
-            .eq('session_id', sessionId)
-            .eq('user_id', userId)
-            .maybeSingle();
-
-        if (existingParticipant) {
-            myParticipantIdRef.current = existingParticipant.id;
-            if(!storedName) setMyName(existingParticipant.user_name);
-            await loadGameData(sessionId, userId);
-            setNeedsOnboarding(false);
-        } else {
-            setNeedsOnboarding(true); 
-            setLoading(false); // Stop loader, toon input
-        }
-        
-        setIsCheckingAuth(false);
-    };
-    checkAccess();
-  }, [sessionId]);
-
-  // ===========================================================================
-  // 2. JOIN ACTIE
-  // ===========================================================================
-  const handleJoinGame = async () => {
-      if (!myName.trim()) return alert("Vul een naam in!");
-      setIsJoining(true);
-      safeStorage.setItem('pingo_guest_name', myName);
-
-      const { data: sData, error: sError } = await supabase.from('bingo_sessions').select('*, bingo_cards(*)').eq('id', sessionId).single();
-      
-      if (sError || !sData) {
-          alert("Fout bij laden sessie: " + (sError?.message || "Niet gevonden"));
-          setIsJoining(false);
-          return;
-      }
-
-      const cardItems = sData.bingo_cards?.items || [];
-      const g = generateGrid(cardItems, true, true);
-      setGrid(g);
-      saveGridLocally(sessionId, myUserId, g);
-
-      try {
-          const { data: newP, error } = await supabase.from('session_participants').insert({
-              session_id: sessionId,
-              user_id: myUserId,
-              user_name: myName,
-              marked_indices: [12],
-              grid_snapshot: g,
-              has_bingo: false
-          }).select().single();
-
-          if (error) throw error;
-
-          myParticipantIdRef.current = newP.id;
-          await loadGameData(sessionId, myUserId); 
-          setNeedsOnboarding(false); 
-
-      } catch (err) {
-          console.error("Join error:", err);
-          alert("Foutmelding: " + err.message);
-      } finally {
-          setIsJoining(false);
-      }
-  };
-
-  // ===========================================================================
-  // 3. DATA LADEN (CRUCIAAL VOOR WIT SCHERM FIX)
-  // ===========================================================================
-  const loadGameData = async (sId, uId) => {
-      setLoading(true);
-      try {
-          const { data, error } = await supabase.from('bingo_sessions').select('*, bingo_cards(*)').eq('id', sId).single();
-          
-          if (error) throw error;
-          if (!data) throw new Error("Geen data gevonden");
-
-          console.log("Game data loaded:", data);
-
-          setSession(data);
-          setCard(data.bingo_cards);
-          setGameMode(data.game_mode);
-          setWinPattern(data.win_pattern || '1line');
-          setCurrentDraw(data.current_draw);
-          setDrawnItems(data.drawn_items || []);
-          
-          if(data.status === 'finished') {
-              setWinner(data.winner_name);
-              setShowWinnerPopup(true);
-          }
-          
-          fetchParticipants(sId);
-          
-          const localGrid = getLocalGrid(sId, uId);
-          if (localGrid) setGrid(localGrid);
-          
-          // Host in Hall Mode hoeft geen player-logic te runnen
-          const isHallHost = data.game_mode === 'hall' && data.host_id === uId;
-
-          if (!isHallHost) {
-             const { data: p } = await supabase.from('session_participants').select('*').eq('session_id', sId).eq('user_id', uId).maybeSingle();
-             if (p) {
-                 myParticipantIdRef.current = p.id;
-                 if (p.marked_indices) { 
-                     const nm = new Array(25).fill(false); 
-                     p.marked_indices.forEach(i => nm[i] = true); 
-                     setMarked(nm); 
-                     setBingoCount(checkBingoRows(nm)); 
-                 }
-                 if (!localGrid && p.grid_snapshot) { 
-                     setGrid(p.grid_snapshot); 
-                     saveGridLocally(sId, uId, p.grid_snapshot); 
-                 }
-             } else {
-                 // Host in Solo/Group mode auto-join
-                 if (data.host_id === uId) {
-                     const g = localGrid || generateGrid(data.bingo_cards.items, true, true);
-                     setGrid(g);
-                     const {data: newP} = await supabase.from('session_participants').insert({
-                         session_id: sId, user_id: uId, user_name: myName || 'Host', marked_indices: [12], grid_snapshot: g, has_bingo: false
-                     }).select().single();
-                     if(newP) myParticipantIdRef.current = newP.id;
-                     fetchParticipants(sId);
-                 }
-             }
-          }
-      } catch (e) {
-          console.error("Load Error:", e);
-          setErrorMsg("Fout bij laden: " + e.message);
-      } finally {
-          setLoading(false);
-      }
-  };
-
-  // Helpers
-  const saveGridLocally = (sId, uId, newGrid) => { safeStorage.setItem(`pingo_grid_${sId}_${uId}`, JSON.stringify(newGrid)); };
-  const getLocalGrid = (sId, uId) => { const saved = safeStorage.getItem(`pingo_grid_${sId}_${uId}`); return saved ? JSON.parse(saved) : null; };
-  const generateGrid = (items, reset, ret) => { if(!items || items.length === 0) return []; const s = [...items].sort(()=>0.5-Math.random()).slice(0,24); s.splice(12,0,"FREE SPACE"); if(!ret) setGrid(s); if(reset) { setMarked(Object.assign(new Array(25).fill(false), {12:true})); setBingoCount(0); } return s; };
-  const checkBingoRows = (m) => [[0,1,2,3,4],[5,6,7,8,9],[10,11,12,13,14],[15,16,17,18,19],[20,21,22,23,24],[0,5,10,15,20],[1,6,11,16,21],[2,7,12,17,22],[3,8,13,18,23],[4,9,14,19,24],[0,6,12,18,24],[4,8,12,16,20]].filter(p=>p.every(i=>m[i])).length;
-  const fetchParticipants = async (sId) => { const { data } = await supabase.from('session_participants').select('*').eq('session_id', sId); if(data) setParticipants(data); };
-  
-  // Actions
-  const handleHostDraw = async () => { if (!card?.items || winner || isDrawing) return; setIsDrawing(true); const available = card.items.filter(item => !drawnItems.includes(item)); if (available.length === 0) { alert("Op!"); setIsDrawing(false); return; } const randomItem = available[Math.floor(Math.random() * available.length)]; const newDrawnList = [...drawnItems, randomItem]; setDrawnItems(newDrawnList); setCurrentDraw(randomItem); await supabase.from('bingo_sessions').update({ current_draw: randomItem, drawn_items: newDrawnList, updated_at: new Date().toISOString() }).eq('id', sessionId); setIsDrawing(false); };
-  const resetDraws = async () => { if(confirm("Reset?")) { await supabase.from('bingo_sessions').update({ current_draw: null, drawn_items: [], status: 'active', winner_name: null }).eq('id', sessionId); setWinner(null); setShowWinnerPopup(false); setVerificationClaim(null); } };
-  const toggleTile = async (index) => { if (index === 12 || isKickedLocal || winner) return; const nm = [...marked]; nm[index] = !nm[index]; setMarked(nm); const count = checkBingoRows(nm); setBingoCount(count); const isFull = nm.every(m => m); let hasBingo = false; if (winPattern === '1line' && count >= 1) hasBingo = true; else if (winPattern === '2lines' && count >= 2) hasBingo = true; else if (winPattern === 'full' && isFull) hasBingo = true; if (sessionId && myParticipantIdRef.current) { await supabase.from('session_participants').update({ marked_indices: nm.map((m, i) => m ? i : null).filter(n => n !== null), has_bingo: hasBingo, updated_at: new Date().toISOString() }).eq('id', myParticipantIdRef.current); } };
-  const handleShuffle = async () => { const g = generateGrid(card?.items, true, true); setShowShuffleConfirm(false); setGrid(g); if (myParticipantIdRef.current) { saveGridLocally(sessionId, myUserId, g); await supabase.from('session_participants').update({ marked_indices: [12], has_bingo: false, grid_snapshot: g }).eq('id', myParticipantIdRef.current); } };
+  // --- FILTER PARTICIPANTS ---
+  const displayParticipants = useMemo(() => {
+    let list = [...participants];
+    if (list.length === 0 && currentUserIdState) {
+        list.push({ 
+            id: 'temp-me', user_id: currentUserIdState, user_name: 'Jij (Laden...)', 
+            marked_indices: marked.map((m,i)=>m?i:null).filter(x=>x!==null) 
+        });
+    }
+    if (gameMode === 'hall' && session?.host_id) {
+        list = list.filter(p => p.user_id !== session.host_id);
+    }
+    return list.sort((a, b) => (b.marked_indices?.length || 0) - (a.marked_indices?.length || 0));
+  }, [participants, gameMode, session, currentUserIdState, marked]);
 
   // --- BRANDING ---
   const isFullCard = marked.every(m => m);
   const getBranding = (rowCount, isFull) => {
-    const titles = { 0: { title: "PINGO", icon: <Sparkles size={24} /> }, 1: { title: "BINGO!", icon: <Trophy size={24} />, color: "bg-orange-500 text-white shadow-xl border-orange-600" }, 12: { title: "FULL BINGO!", icon: <Crown size={24} className="text-orange-500" />, color: "bg-black border-2 border-orange-500 text-orange-500 shadow-[0_0_30px_rgba(249,115,22,0.8)] animate-pulse scale-110" } };
-    if (winPattern === 'full') { if (isFull) return titles[12]; return { title: "SPELEND..", icon: <Grid3X3 size={16} className="opacity-50"/>, color: "hidden" }; }
-    const level = Math.min(rowCount, 12); if (level === 0) return { ...titles[0], color: "hidden" }; return { ...(titles[level] || titles[1]) };
+    const titles = {
+        0: { title: "PINGO", icon: <Sparkles size={24} /> },
+        1: { title: "BINGO!", icon: <Trophy size={24} />, color: "bg-orange-500 text-white shadow-xl border-orange-600" },
+        12: { title: "FULL BINGO!", icon: <Crown size={24} className="text-orange-500" />, color: "bg-black border-2 border-orange-500 text-orange-500 shadow-[0_0_30px_rgba(249,115,22,0.8)] animate-pulse scale-110" }
+    };
+    if (winPattern === 'full') {
+        if (isFull) return titles[12];
+        return { title: "SPELEND..", icon: <Grid3X3 size={16} className="opacity-50"/>, color: "hidden" };
+    }
+    const level = Math.min(rowCount, 12);
+    if (level === 0) return { ...titles[0], color: "hidden" }; 
+    return { ...(titles[level] || titles[1]) };
   };
+  
   const soloBranding = getBranding(bingoCount, isFullCard);
   let showFlag = false;
-  if (gameMode !== 'hall') { if (winPattern === '1line' && bingoCount >= 1) showFlag = true; else if (winPattern === '2lines' && bingoCount >= 2) showFlag = true; else if (winPattern === 'full' && isFullCard) showFlag = true; }
+  if (gameMode !== 'hall') {
+      if (winPattern === '1line' && bingoCount >= 1) showFlag = true;
+      else if (winPattern === '2lines' && bingoCount >= 2) showFlag = true;
+      else if (winPattern === 'full' && isFullCard) showFlag = true;
+  }
 
-  const displayParticipants = useMemo(() => {
-    let list = [...participants];
-    if (gameMode === 'hall' && session?.host_id) { list = list.filter(p => p.user_id !== session.host_id); }
-    return list.sort((a, b) => (b.marked_indices?.length || 0) - (a.marked_indices?.length || 0));
-  }, [participants, gameMode, session]);
+  // --- INIT ---
+  useEffect(() => {
+    if (initializationRan.current) return;
+    initializationRan.current = true;
+    const init = async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) { navigate('/login'); return; }
+        currentUserIdRef.current = user.id;
+        setCurrentUserIdState(user.id);
+        if (sessionId) await loadSessionData(sessionId, user.id);
+        else if (id) await handleSoloStart(id, user.id);
+      } catch (err) { console.error(err); setErrorMsg("Laden mislukt."); setLoading(false); }
+    };
+    init();
+  }, [id, sessionId, navigate]);
+
+  // --- HELPERS ---
+  const saveGridLocally = (sId, uId, newGrid) => { try { localStorage.setItem(`pingo_grid_${sId}_${uId}`, JSON.stringify(newGrid)); } catch (e) {} };
+  const getLocalGrid = (sId, uId) => { try { const saved = localStorage.getItem(`pingo_grid_${sId}_${uId}`); return saved ? JSON.parse(saved) : null; } catch (e) { return null; } };
+
+  const loadSessionData = async (sId, uId) => {
+    setLoading(true);
+    try {
+        let { data: sessionData } = await supabase.from('bingo_sessions').select('*, bingo_cards(*)').eq('id', sId).single();
+        setSession(sessionData);
+        setGameMode(sessionData.game_mode || 'rows');
+        setWinPattern(sessionData.win_pattern || '1line'); 
+        setCurrentDraw(sessionData.current_draw);
+        setDrawnItems(sessionData.drawn_items || []);
+        setCard(sessionData.bingo_cards);
+        
+        // Als spel al klaar is bij laden
+        if (sessionData.status === 'finished') {
+            setWinner("Iemand"); // Fallback
+            setShowWinnerPopup(true);
+        }
+
+        const isHostUser = sessionData.host_id === uId;
+        if (!(sessionData.game_mode === 'hall' && isHostUser)) await joinOrRestoreParticipant(sId, sessionData.bingo_cards.items, uId);
+        fetchParticipants(sId);
+    } catch (e) { setErrorMsg("Fout bij laden sessie."); } finally { setLoading(false); }
+  };
+
+  const joinOrRestoreParticipant = async (sId, cardItems, uId) => {
+    const localGrid = getLocalGrid(sId, uId);
+    if (localGrid) setGrid(localGrid); 
+
+    const { data: existing } = await supabase.from('session_participants').select('*').eq('session_id', sId).eq('user_id', uId).maybeSingle();
+
+    if (existing) {
+        myParticipantIdRef.current = existing.id;
+        if (existing.grid_snapshot?.length > 0 && JSON.stringify(localGrid) !== JSON.stringify(existing.grid_snapshot)) {
+             setGrid(existing.grid_snapshot); saveGridLocally(sId, uId, existing.grid_snapshot);
+        } else if (!existing.grid_snapshot?.length) {
+             const g = localGrid || generateGrid(cardItems, false, true); if(!localGrid) setGrid(g); saveGridLocally(sId, uId, g);
+             await supabase.from('session_participants').update({ grid_snapshot: g }).eq('id', existing.id);
+        }
+        if (existing.marked_indices) {
+            const nm = new Array(25).fill(false); existing.marked_indices.forEach(idx => nm[idx] = true);
+            setMarked(nm); setBingoCount(checkBingoRows(nm));
+        }
+    } else {
+        const { data: p } = await supabase.from('profiles').select('username').eq('id', uId).single();
+        const g = generateGrid(cardItems, true, true); setGrid(g); saveGridLocally(sId, uId, g);
+        try { const { data: newP } = await supabase.from('session_participants').insert({ session_id: sId, user_id: uId, user_name: p?.username || 'Speler', marked_indices: [12], grid_snapshot: g }).select().single();
+        if (newP) myParticipantIdRef.current = newP.id; fetchParticipants(sId); } catch (e) {}
+    }
+  };
+
+  // --- ACTIONS ---
+  const handleHostDraw = async () => {
+    if (!card?.items || winner || isDrawing) return;
+    setIsDrawing(true); 
+    const available = card.items.filter(item => !drawnItems.includes(item));
+    if (available.length === 0) { alert("Alle items zijn al getrokken!"); setIsDrawing(false); return; }
+    const randomItem = available[Math.floor(Math.random() * available.length)];
+    const newDrawnList = [...drawnItems, randomItem];
+    setDrawnItems(newDrawnList);
+    setCurrentDraw(randomItem);
+    await supabase.from('bingo_sessions').update({ current_draw: randomItem, drawn_items: newDrawnList, updated_at: new Date().toISOString() }).eq('id', sessionId);
+    setIsDrawing(false);
+  };
+
+  const handleShuffle = async () => {
+    const g = generateGrid(card?.items, true, true); setShowShuffleConfirm(false); setGrid(g);
+    if (myParticipantIdRef.current) { saveGridLocally(sessionId, currentUserIdRef.current, g); await supabase.from('session_participants').update({ marked_indices: [12], has_bingo: false, grid_snapshot: g }).eq('id', myParticipantIdRef.current); }
+  };
+
+  const toggleTile = async (index) => {
+    if (index === 12 || isKickedLocal || winner) return;
+    const nm = [...marked]; nm[index] = !nm[index]; setMarked(nm);
+    const count = checkBingoRows(nm); setBingoCount(count);
+    const isFull = nm.every(m => m);
+    let hasBingo = false;
+    if (winPattern === '1line' && count >= 1) hasBingo = true;
+    else if (winPattern === '2lines' && count >= 2) hasBingo = true;
+    else if (winPattern === 'full' && isFull) hasBingo = true;
+    if (sessionId && myParticipantIdRef.current) {
+        await supabase.from('session_participants').update({ marked_indices: nm.map((m, i) => m ? i : null).filter(n => n !== null), has_bingo: hasBingo, updated_at: new Date().toISOString() }).eq('id', myParticipantIdRef.current);
+    }
+  };
+
+  const generateGrid = (items, reset, ret) => {
+      if(!items) return []; const s = [...items].sort(()=>0.5-Math.random()).slice(0,24); s.splice(12,0,"FREE SPACE"); if(!ret) setGrid(s); if(reset) { setMarked(Object.assign(new Array(25).fill(false), {12:true})); setBingoCount(0); } return s;
+  };
+  const checkBingoRows = (m) => [[0,1,2,3,4],[5,6,7,8,9],[10,11,12,13,14],[15,16,17,18,19],[20,21,22,23,24],[0,5,10,15,20],[1,6,11,16,21],[2,7,12,17,22],[3,8,13,18,23],[4,9,14,19,24],[0,6,12,18,24],[4,8,12,16,20]].filter(p=>p.every(i=>m[i])).length;
+  
+  const resetDraws = async () => { 
+      if(confirm("Reset?")) {
+          await supabase.from('bingo_sessions').update({ current_draw: null, drawn_items: [], status: 'active' }).eq('id', sessionId); 
+          setWinner(null); 
+          setShowWinnerPopup(false);
+          setVerificationClaim(null); 
+      }
+  };
+  
+  const fetchParticipants = async (sId) => { const { data } = await supabase.from('session_participants').select('*').eq('session_id', sId); if(data) setParticipants(data); };
+  const handleSoloStart = async (cId, uId) => { try { const code = `P-${Math.random().toString(36).substring(2,6).toUpperCase()}`; const { data } = await supabase.from('bingo_sessions').insert([{ host_id: uId, card_id: cId, join_code: code, status: 'active', max_players: 1, drawn_items: [], win_pattern: '1line' }]).select().single(); navigate(`/play-session/${data.id}`, {replace:true}); } catch(e){setLoading(false);} };
 
   // --- REALTIME ---
   useEffect(() => {
-    if (!sessionId || needsOnboarding) return;
-    const ch = supabase.channel(`room_${sessionId}`).on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'bingo_sessions', filter: `id=eq.${sessionId}` }, (pl) => { 
-        setSession(prev => ({...prev, ...pl.new})); 
-        if(pl.new.game_mode) setGameMode(pl.new.game_mode); 
-        if(pl.new.win_pattern) setWinPattern(pl.new.win_pattern); 
-        if(pl.new.current_draw!==undefined) setCurrentDraw(pl.new.current_draw); 
-        if(pl.new.drawn_items) setDrawnItems(pl.new.drawn_items); 
-        if (pl.new.drawn_items && pl.new.drawn_items.length === 0 && pl.new.status === 'active') { setWinner(null); setShowWinnerPopup(false); handleShuffle(); }
-        if (pl.new.status === 'finished' && pl.new.winner_name) { setWinner(pl.new.winner_name); setShowWinnerPopup(true); confetti({ particleCount: 100, spread: 70 }); }
-        if(pl.new.banned_users?.includes(myUserId)) { setIsKickedLocal(true); setTimeout(() => window.location.href='/dashboard', 3000); } 
-    }).on('postgres_changes', { event: '*', schema: 'public', table: 'session_participants', filter: `session_id=eq.${sessionId}` }, (pl) => { 
-        if(pl.eventType !== 'DELETE') { fetchParticipants(sessionId); if(pl.new.has_bingo && isHost && !winner && gameMode === 'hall') setVerificationClaim(pl.new); if(pl.new.id === myParticipantIdRef.current && pl.new.marked_indices) { const nm=new Array(25).fill(false); pl.new.marked_indices.forEach(i=>nm[i]=true); setMarked(nm); setBingoCount(checkBingoRows(nm)); } 
-        } else if(pl.old.id === myParticipantIdRef.current) { setIsKickedLocal(true); setTimeout(() => window.location.href='/dashboard', 3000); } else setParticipants(prev => prev.filter(p => p.id !== pl.old.id)); 
-    }).on('broadcast', { event: 'false_bingo' }, () => { setIsFalseBingo(true); setTimeout(()=>setIsFalseBingo(false),3000); })
-      .on('broadcast', { event: 'game_won' }, (pl) => { setWinner(pl.payload.winnerName); setShowWinnerPopup(true); confetti({ particleCount: 100, spread: 70 }); })
-      .subscribe(); 
+    if (!sessionId) return;
+    const ch = supabase.channel(`room_${sessionId}`)
+        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'bingo_sessions', filter: `id=eq.${sessionId}` }, (pl) => { 
+            setSession(prev => ({...prev, ...pl.new})); 
+            if(pl.new.game_mode) setGameMode(pl.new.game_mode); 
+            if(pl.new.win_pattern) setWinPattern(pl.new.win_pattern); 
+            if(pl.new.current_draw!==undefined) setCurrentDraw(pl.new.current_draw); 
+            if(pl.new.drawn_items) setDrawnItems(pl.new.drawn_items); 
+            
+            // RESET LOGICA
+            if (pl.new.drawn_items && pl.new.drawn_items.length === 0 && pl.new.status === 'active') {
+                setWinner(null);
+                setShowWinnerPopup(false); // Sluit popup bij iedereen bij reset
+                handleShuffle(); 
+            }
+
+            if(pl.new.banned_users?.includes(currentUserIdRef.current)) { 
+                setIsKickedLocal(true); 
+                setTimeout(() => window.location.href='/dashboard', 3000); 
+            } 
+        })
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'session_participants', filter: `session_id=eq.${sessionId}` }, (pl) => { 
+            if(pl.eventType !== 'DELETE') { 
+                fetchParticipants(sessionId); 
+                if(pl.new.has_bingo && isHost && !winner && gameMode === 'hall') setVerificationClaim(pl.new); 
+                if(pl.new.id === myParticipantIdRef.current && pl.new.marked_indices) { 
+                    const nm=new Array(25).fill(false); 
+                    pl.new.marked_indices.forEach(i=>nm[i]=true); 
+                    setMarked(nm); 
+                    setBingoCount(checkBingoRows(nm)); 
+                } 
+            } else if(pl.old.id === myParticipantIdRef.current) { 
+                setIsKickedLocal(true); 
+                setTimeout(() => window.location.href='/dashboard', 3000); 
+            } else setParticipants(prev => prev.filter(p => p.id !== pl.old.id)); 
+        })
+        .on('broadcast', { event: 'false_bingo' }, () => { 
+            setIsFalseBingo(true); 
+            setTimeout(()=>setIsFalseBingo(false),3000); 
+        })
+        .on('broadcast', { event: 'game_won' }, (pl) => { 
+            // Hier komt de naam binnen
+            setWinner(pl.payload.winnerName); 
+            setShowWinnerPopup(true); 
+            confetti({ particleCount: 100, spread: 70 }); 
+        })
+        .subscribe(); 
     return () => supabase.removeChannel(ch); 
-  }, [sessionId, isHost, winner, gameMode, needsOnboarding]);
+  }, [sessionId, isHost, winner, gameMode]);
 
-  // RENDER: LOADING
-  if (isCheckingAuth) return <div className="min-h-screen flex items-center justify-center font-black text-orange-500 animate-pulse text-2xl uppercase">Verifiëren...</div>;
-  if (loading) return <div className="min-h-screen flex items-center justify-center font-black text-orange-500 animate-pulse text-2xl uppercase">Laden...</div>;
-  if (errorMsg) return <div className="min-h-screen flex items-center justify-center p-8 text-center"><h2 className="text-xl font-black">Oeps</h2><p>{errorMsg}</p><button onClick={()=>window.location.reload()} className="bg-orange-500 text-white px-4 py-2 rounded mt-4">Opnieuw</button></div>;
-
-  // RENDER: GAST INPUT
-  if (needsOnboarding) {
-      return (
-        <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4 font-sans fixed inset-0 z-[9999]">
-            <div className="bg-white p-8 rounded-[2.5rem] shadow-2xl w-full max-w-md text-center border-4 border-orange-100 animate-in zoom-in duration-300">
-                <div className="bg-orange-100 w-24 h-24 rounded-full flex items-center justify-center mx-auto mb-6 text-orange-500 shadow-inner"><Ticket size={48} /></div>
-                <h2 className="text-3xl font-black text-gray-900 italic uppercase mb-2">Entree Ticket</h2>
-                <p className="text-gray-400 font-bold uppercase tracking-widest text-xs mb-8">Vul je naam in om mee te spelen</p>
-                <input type="text" value={myName} onChange={(e) => setMyName(e.target.value)} placeholder="Jouw Naam" className="w-full p-5 bg-gray-50 rounded-2xl font-black text-lg text-center uppercase placeholder:text-gray-300 border-2 border-gray-100 focus:border-orange-500 focus:ring-4 focus:ring-orange-100 outline-none transition-all mb-4" autoFocus />
-                <button onClick={handleJoinGame} disabled={isJoining} className="w-full bg-orange-500 text-white py-5 rounded-2xl font-black text-lg uppercase tracking-widest hover:bg-orange-600 transition-all shadow-xl hover:shadow-orange-200 active:scale-95 disabled:opacity-50 disabled:scale-100 flex items-center justify-center gap-2">{isJoining ? <><Loader2 className="animate-spin" /> Even geduld...</> : "MEEDOEN"}</button>
-            </div>
-        </div>
-      );
-  }
-
-  // RENDER: SPEL (WIT SCHERM PREVENTIE)
-  // Als session of card er niet zijn, toon niets (of loader)
-  if (!session || !card) return <div className="min-h-screen flex items-center justify-center">Data laden...</div>;
+  if (loading) return <div className="p-20 text-center font-black text-orange-500 animate-pulse text-2xl uppercase">Laden...</div>;
+  if (errorMsg) return <div className="h-screen flex items-center justify-center flex-col gap-4 text-center"><h2 className="text-xl font-black">Oeps</h2><p>{errorMsg}</p><button onClick={()=>window.location.reload()} className="bg-orange-500 text-white px-4 py-2 rounded">Opnieuw</button></div>;
 
   return (
     <div className="min-h-screen bg-gray-50 pb-20 font-sans text-center sm:text-left relative overflow-x-hidden">
         
-        {/* MODALS */}
-        {winner && showWinnerPopup && <div className="fixed inset-0 z-[99999] bg-black/95 flex items-center justify-center text-white text-center animate-in zoom-in p-4"><div className="max-w-xl w-full relative">{!isHost && <button onClick={() => setShowWinnerPopup(false)} className="absolute top-0 right-0 p-2 bg-white/10 hover:bg-white/20 rounded-full transition-colors"><X size={24} /></button>}<Crown size={100} className="mx-auto mb-6 text-yellow-400 animate-bounce"/><h1 className="text-5xl md:text-7xl font-black italic uppercase tracking-tighter mb-2 text-transparent bg-clip-text bg-gradient-to-br from-yellow-300 to-yellow-600">WINNAAR!</h1><p className="text-sm font-bold uppercase tracking-widest opacity-60 mb-6">Spel Afgelopen</p><div className="bg-white text-gray-900 rounded-[2rem] p-6 shadow-2xl transform rotate-2 mb-8"><div className="text-sm font-black text-gray-400 uppercase tracking-widest mb-1">De winnaar is</div><div className="text-3xl md:text-5xl font-black uppercase text-purple-600 break-words leading-tight">{winner}</div></div>{isHost ? <button onClick={resetDraws} className="bg-white/20 hover:bg-white text-white hover:text-black border-2 border-white px-8 py-4 rounded-xl font-black uppercase transition-all">Nieuw Spel Starten</button> : <button onClick={() => setShowWinnerPopup(false)} className="bg-white text-black px-8 py-4 rounded-xl font-black uppercase hover:scale-105 transition-transform shadow-lg">Sluiten & Bekijk Kaart</button>}</div></div>}
+        {/* WINNER OVERLAY - Z-INDEX 99999 (TOP PRIORITY) */}
+        {winner && showWinnerPopup && (
+            <div className="fixed inset-0 z-[99999] bg-black/95 flex items-center justify-center text-white text-center animate-in zoom-in p-4">
+                <div className="max-w-xl w-full relative">
+                    
+                    {/* SLUIT KNOP VOOR SPELERS */}
+                    {!isHost && (
+                        <button onClick={() => setShowWinnerPopup(false)} className="absolute top-0 right-0 p-2 bg-white/10 hover:bg-white/20 rounded-full transition-colors">
+                            <X size={24} />
+                        </button>
+                    )}
+
+                    <Crown size={100} className="mx-auto mb-6 text-yellow-400 animate-bounce drop-shadow-[0_0_15px_rgba(250,204,21,0.5)]"/>
+                    <h1 className="text-5xl md:text-7xl font-black italic uppercase tracking-tighter mb-2 text-transparent bg-clip-text bg-gradient-to-br from-yellow-300 to-yellow-600">WINNAAR!</h1>
+                    <p className="text-sm font-bold uppercase tracking-widest opacity-60 mb-6">De winnaar is bekend</p>
+                    
+                    <div className="bg-white text-gray-900 rounded-[2rem] p-6 shadow-2xl transform rotate-2 mb-8">
+                        <div className="text-sm font-black text-gray-400 uppercase tracking-widest mb-1">Naam</div>
+                        <div className="text-3xl md:text-5xl font-black uppercase text-purple-600 break-words leading-tight">{winner}</div>
+                    </div>
+
+                    {isHost ? (
+                        <button onClick={resetDraws} className="bg-white/20 hover:bg-white text-white hover:text-black border-2 border-white px-8 py-4 rounded-xl font-black uppercase transition-all">Nieuw Spel Starten</button>
+                    ) : (
+                        <button onClick={() => setShowWinnerPopup(false)} className="bg-white text-black px-8 py-4 rounded-xl font-black uppercase hover:scale-105 transition-transform shadow-lg">Sluiten</button>
+                    )}
+                </div>
+            </div>
+        )}
+        
         {isFalseBingo && <div className="fixed inset-0 z-[99999] bg-red-600/95 flex items-center justify-center text-white text-center"><div><AlertOctagon size={100} className="mx-auto mb-4"/><h1 className="text-6xl font-black">VALSE BINGO!</h1></div></div>}
         {isKickedLocal && <div className="fixed inset-0 z-[99999] bg-black/70 flex items-center justify-center text-white"><h2 className="text-3xl font-black">Je bent verwijderd.</h2></div>}
         {showQR && <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/80" onClick={()=>setShowQR(false)}><div className="bg-white p-8 rounded-3xl text-center"><img src={`https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${window.location.href}`} className="w-64 h-64 mix-blend-multiply"/><p className="mt-4 font-black text-2xl text-gray-900">{session?.join_code}</p></div></div>}
 
-        {/* HEADER */}
+        {/* HEADER (Z-50) */}
         <div className="pt-8 px-6 pb-6 relative z-50">
             <div className="max-w-6xl mx-auto relative group">
                 <div className="relative z-50 bg-gray-900 rounded-[2.5rem] px-6 py-4 flex flex-col md:flex-row justify-between items-center shadow-2xl gap-4 md:gap-0">
@@ -345,6 +341,7 @@ export default function PlayBingo() {
                         {isHost && <button onClick={()=>navigate(`/setup/${card.id}/${sessionId}`)} className="p-2.5 bg-gray-800 text-gray-400 rounded-xl hover:text-white"><Settings size={20}/></button>}
                     </div>
                 </div>
+
                 <div className={`absolute top-[85%] left-0 right-0 z-10 flex justify-center pointer-events-none transition-all duration-700 ease-[cubic-bezier(0.34,1.56,0.64,1)] ${showFlag ? 'translate-y-0 opacity-100' : '-translate-y-[100%] opacity-0'}`}>
                     <div className={`px-12 pt-8 pb-4 rounded-b-3xl shadow-2xl border-2 border-t-0 flex items-center justify-center gap-4 ${soloBranding.color || 'bg-orange-500 text-white border-orange-600'}`}>
                         <div className="animate-bounce">{soloBranding.icon}</div>
@@ -364,8 +361,8 @@ export default function PlayBingo() {
                 />
             ) : (
                 <PlayerView 
-                    grid={grid} marked={marked} toggleTile={toggleTile} handleShuffleClick={handleShuffle}
-                    bingoCount={bingoCount} gameMode={gameMode} currentDraw={currentDraw} participants={displayParticipants} isHost={isHost} session={session} sessionId={sessionId} myUserId={myUserId} supabase={supabase} showShuffleConfirm={showShuffleConfirm} setShowShuffleConfirm={setShowShuffleConfirm} confirmShuffle={handleShuffle}
+                    grid={grid} marked={marked} toggleTile={toggleTile} handleShuffleClick={() => marked.filter(Boolean).length > 1 ? setShowShuffleConfirm(true) : handleShuffle()}
+                    bingoCount={bingoCount} gameMode={gameMode} currentDraw={currentDraw} participants={displayParticipants} isHost={isHost} session={session} sessionId={sessionId} myUserId={currentUserIdRef.current} supabase={supabase} showShuffleConfirm={showShuffleConfirm} setShowShuffleConfirm={setShowShuffleConfirm} confirmShuffle={handleShuffle}
                 />
             )}
         </div>
