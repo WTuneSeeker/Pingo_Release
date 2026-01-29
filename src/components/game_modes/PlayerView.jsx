@@ -20,11 +20,21 @@ export default function PlayerView({
     confirmShuffle 
 }) {
     
+    // FIX: Volledige Branding Lijst (ook hier nodig voor lobby)
     const getBranding = (rowCount, isFull) => {
         const titles = {
             0: { title: "PINGO", icon: <Sparkles size={16} /> },
             1: { title: "BINGO!", icon: <Trophy size={16} />, lobbyClass: "bg-orange-500 border-orange-600 text-white shadow-lg" },
             2: { title: "DUBBEL!", icon: <Zap size={16} />, lobbyClass: "bg-orange-600 border-orange-700 text-white shadow-lg" },
+            3: { title: "TRIPPEL!", icon: <Rocket size={16} />, lobbyClass: "bg-red-500 border-red-600 text-white shadow-lg" },
+            4: { title: "QUADRA!", icon: <Flame size={16} />, lobbyClass: "bg-red-600 border-red-700 text-white shadow-lg" },
+            5: { title: "SUPER!", icon: <Star size={16} />, lobbyClass: "bg-purple-500 border-purple-600 text-white shadow-lg" },
+            6: { title: "ULTRA!", icon: <Sparkles size={16} />, lobbyClass: "bg-purple-600 border-purple-700 text-white shadow-lg" },
+            7: { title: "HYPER!", icon: <Zap size={16} />, lobbyClass: "bg-indigo-500 border-indigo-600 text-white shadow-lg" },
+            8: { title: "INSANE!", icon: <Ghost size={16} />, lobbyClass: "bg-indigo-600 border-indigo-700 text-white shadow-lg" },
+            9: { title: "GODLY!", icon: <Crown size={16} />, lobbyClass: "bg-yellow-400 border-yellow-500 text-black shadow-lg" },
+            10: { title: "MYSTICAL!", icon: <Gem size={16} />, lobbyClass: "bg-pink-500 border-pink-600 text-white shadow-lg" },
+            11: { title: "CELESTIAL!", icon: <PartyPopper size={16} />, lobbyClass: "bg-pink-600 border-pink-700 text-white shadow-lg" },
             12: { title: "FULL BINGO!", icon: <Crown size={16} />, lobbyClass: "bg-gray-900 border-orange-500 text-white shadow-[0_0_15px_rgba(249,115,22,0.6)]" }
         };
         const level = Math.min(rowCount, 12);
@@ -83,25 +93,37 @@ export default function PlayerView({
                 </div>
             </div>
 
-            {participants && participants.length > 0 && gameMode !== 'hall' && (
+            {/* FIX: LOBBY ALLEEN TONEN BIJ MEERDERE SPELERS */}
+            {participants && participants.length > 0 && gameMode !== 'hall' && session?.max_players > 1 && (
                 <div className="w-full lg:w-96 shrink-0 bg-white/80 backdrop-blur-xl rounded-[2.5rem] p-6 shadow-2xl border border-white/50 mb-12 lg:sticky lg:top-32">
                     <div className="flex items-center justify-between mb-6 pl-2"><h3 className="text-xl font-black text-gray-900 flex items-center gap-3 italic uppercase"><Users className="text-orange-500" size={24} /> Lobby <span className="bg-orange-100 text-orange-600 px-2 py-0.5 rounded-lg text-sm not-italic ml-1">{participants.length}</span></h3></div>
                     <div className="space-y-3 max-h-[60vh] overflow-y-auto p-4 -mx-4 custom-scrollbar">
                         {participants.map((p) => {
                             const pCount = p.marked_indices?.length || 0;
+                            const pFull = pCount === 25;
+                            const tempG = new Array(25).fill(false);
+                            if(p.marked_indices) p.marked_indices.forEach(i=>tempG[i]=true);
+                            
+                            const pWins = [[0,1,2,3,4],[5,6,7,8,9],[10,11,12,13,14],[15,16,17,18,19],[20,21,22,23,24],[0,5,10,15,20],[1,6,11,16,21],[2,7,12,17,22],[3,8,13,18,23],[4,9,14,19,24],[0,6,12,18,24],[4,8,12,16,20]].filter(r => r.every(i => tempG[i])).length;
+                            const branding = getBranding(pWins, pFull);
+                            
+                            const hasStatus = (gameMode === 'rows' && pWins > 0) || pFull;
+
                             return (
-                                <div key={p.id} className="group relative flex items-center gap-4 p-3 rounded-2xl border-2 transition-all duration-300 overflow-hidden bg-white border-gray-50 text-gray-700">
+                                <div key={p.id} className={`group relative flex items-center gap-4 p-3 rounded-2xl border-2 transition-all duration-300 overflow-hidden ${branding.lobbyClass} ${hasStatus ? 'shadow-md scale-[1.02]' : 'hover:border-orange-100 hover:shadow-md'}`}>
                                     <div className="relative shrink-0">
-                                        <div className="w-10 h-10 rounded-full flex items-center justify-center text-xs font-black shadow-sm bg-gray-100 text-gray-500">
+                                        <div className={`w-10 h-10 rounded-full flex items-center justify-center text-xs font-black shadow-sm ${hasStatus ? 'bg-white/20 backdrop-blur-sm' : 'bg-gray-100 text-gray-500'}`}>
                                             {(p.user_name || "S").charAt(0).toUpperCase()}
                                         </div>
+                                        {p.user_id === session?.host_id && <div className="absolute -top-1 -right-1 bg-yellow-400 text-yellow-900 p-0.5 rounded-full border-2 border-white shadow-sm z-10"><Crown size={10} fill="currentColor" /></div>}
                                     </div>
                                     <div className="flex-1 min-w-0 pr-12 relative">
                                         <div className="flex justify-between items-center mb-0.5"><span className="font-black text-xs uppercase truncate">{p.user_name || "Speler"}</span></div>
+                                        <span className={`text-[9px] font-black uppercase tracking-widest truncate flex items-center gap-1 opacity-80`}>{hasStatus ? (<>{branding.icon} {branding.title}</>) : 'Spelend...'}</span>
                                         <div className="absolute right-0 top-1/2 -translate-y-1/2 flex items-center justify-end w-16 h-full">
-                                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-md bg-gray-100 text-gray-400">{pCount > 0 ? pCount - 1 : 0}/24</span>
+                                            <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-md ${hasStatus ? 'bg-white/20' : 'bg-gray-100 text-gray-400'}`}>{pCount > 0 ? pCount - 1 : 0}/24</span>
                                             {isHost && p.user_id !== myUserId && (
-                                                <button onClick={async () => { await supabase.from('bingo_sessions').update({ banned_users: [...(session.banned_users||[]), p.user_id] }).eq('id', sessionId); await supabase.from('session_participants').delete().eq('id', p.id); }} className="absolute right-0 p-1.5 text-gray-300 hover:bg-red-50 hover:text-red-500 rounded-lg" title="Verwijder speler"><UserMinus size={14} /></button>
+                                                <button onClick={async () => { await supabase.from('bingo_sessions').update({ banned_users: [...(session.banned_users||[]), p.user_id] }).eq('id', sessionId); await supabase.from('session_participants').delete().eq('id', p.id); }} className={`absolute right-0 p-1.5 rounded-lg transition-all duration-300 transform translate-x-full opacity-0 group-hover:translate-x-0 group-hover:opacity-100 ${hasStatus ? 'hover:bg-white/20' : 'text-gray-300 hover:bg-red-50 hover:text-red-500'} `} title="Verwijder speler"><UserMinus size={14} /></button>
                                             )}
                                         </div>
                                     </div>
