@@ -27,8 +27,8 @@ export default function PlayBingo() {
   
   // GUEST STATE
   const [guestName, setGuestName] = useState('');
-  const [showGuestInput, setShowGuestInput] = useState(false);
-  const [joining, setJoining] = useState(false); // Nieuw: laadstatus voor de knop
+  const [showGuestInput, setShowGuestInput] = useState(false); // DIT IS DE BELANGRIJKSTE
+  const [joining, setJoining] = useState(false); // Voor de knop loading state
   
   // DATA
   const [currentDraw, setCurrentDraw] = useState(null);
@@ -63,7 +63,6 @@ export default function PlayBingo() {
   // --- FILTER PARTICIPANTS ---
   const displayParticipants = useMemo(() => {
     let list = [...participants];
-    // Zorg dat de gast zichzelf direct ziet in de lijst (optimistic update)
     if (!loading && !showGuestInput && currentUserIdState) {
        const amIInList = list.find(p => p.user_id === currentUserIdState);
        if (!amIInList) {
@@ -106,7 +105,7 @@ export default function PlayBingo() {
       else if (winPattern === 'full' && isFullCard) showFlag = true;
   }
 
-  // --- 1. INIT LOGICA ---
+  // --- 1. INIT LOGICA (HARDE GAST CHECK) ---
   useEffect(() => {
     if (initializationRan.current) return;
     initializationRan.current = true;
@@ -116,7 +115,7 @@ export default function PlayBingo() {
         const { data: { user } } = await supabase.auth.getUser();
         let userId = user?.id;
 
-        // GAST CHECK
+        // GAST LOGICA
         if (!userId) {
             let guestId = localStorage.getItem('pingo_guest_id');
             if (!guestId) {
@@ -127,18 +126,21 @@ export default function PlayBingo() {
             
             const storedName = localStorage.getItem('pingo_guest_name');
             
-            // HARDE STOP: Geen naam = Input Scherm
+            // HIER ZAT DE FOUT: Nu zetten we expliciet showGuestInput op true
             if (!storedName) {
                 currentUserIdRef.current = userId;
                 setCurrentUserIdState(userId);
-                setLoading(false); 
-                setShowGuestInput(true); // Toon input
-                return; // STOPPEN
+                
+                setShowGuestInput(true); // <--- DIT ZORGT DAT JE HET INPUT VELD ZIET
+                setLoading(false);       // <--- STOP LADEN
+                
+                return; // STOPPEN TOTDAT ER EEN NAAM IS
             } else {
                 setGuestName(storedName);
             }
         }
 
+        // Als we hier komen hebben we een naam of login
         currentUserIdRef.current = userId;
         setCurrentUserIdState(userId);
 
@@ -150,27 +152,26 @@ export default function PlayBingo() {
     init();
   }, [id, sessionId, navigate]);
 
-  // --- 2. DE JOIN KNOP (CRUCIAAL) ---
+  // --- 2. DE JOIN KNOP ---
   const handleGuestJoinSubmit = async () => {
       if (!guestName.trim()) return alert("Vul een naam in!");
       
-      setJoining(true); // Zet knop op laden
+      setJoining(true); // Knop loader aan
       
       try {
-          // PROBEER EERST TE JOINEN IN DE DB
+          // EERST JOINEN IN DATABASE
           const success = await joinOrRestoreParticipant(sessionId, card.items, currentUserIdRef.current, guestName);
           
           if (success) {
-              // Pas als het gelukt is, slaan we lokaal op en gaan we door
+              // Als gelukt: opslaan en doorgaan
               localStorage.setItem('pingo_guest_name', guestName);
-              await loadSessionData(sessionId, currentUserIdRef.current, guestName); // Laad de rest van de data
-              setShowGuestInput(false); // Verberg input
+              await loadSessionData(sessionId, currentUserIdRef.current, guestName);
+              setShowGuestInput(false);
           } else {
-              alert("Kon niet deelnemen. Controleer je verbinding.");
+              alert("Er ging iets mis bij het verbinden. Probeer opnieuw.");
           }
       } catch (e) {
           console.error(e);
-          alert("Er ging iets mis bij het joinen.");
       } finally {
           setJoining(false);
       }
@@ -197,9 +198,8 @@ export default function PlayBingo() {
 
         const isHostUser = sessionData.host_id === uId;
         
-        // Als we GEEN host zijn, en nog niet in de lijst staan -> Joinen
+        // Als we geen host zijn, moeten we zorgen dat we in de lijst staan
         if (!(sessionData.game_mode === 'hall' && isHostUser)) {
-             // We roepen dit aan, maar de return value boeit hier minder, we gaan ervan uit dat het lukt of al gelukt is
              await joinOrRestoreParticipant(sId, sessionData.bingo_cards.items, uId, explicitName);
         }
         
@@ -208,13 +208,12 @@ export default function PlayBingo() {
     } catch (e) { setErrorMsg("Fout bij laden sessie."); setLoading(false); }
   };
 
-  // --- 4. JOIN FUNCTIE (MET RETURN VALUE) ---
+  // --- 4. JOIN FUNCTIE (MET SUCCES RETURN) ---
   const joinOrRestoreParticipant = async (sId, cardItems, uId, explicitName = null) => {
     const localGrid = getLocalGrid(sId, uId);
     if (localGrid) setGrid(localGrid); 
 
     try {
-        // Check bestaand
         const { data: existing } = await supabase.from('session_participants').select('*').eq('session_id', sId).eq('user_id', uId).maybeSingle();
 
         if (existing) {
@@ -231,13 +230,13 @@ export default function PlayBingo() {
                 const nm = new Array(25).fill(false); existing.marked_indices.forEach(idx => nm[idx] = true);
                 setMarked(nm); setBingoCount(checkBingoRows(nm));
             }
-            // Update naam indien nodig
+            // Update naam als die anders is
             if (explicitName && existing.user_name !== explicitName) {
                 await supabase.from('session_participants').update({ user_name: explicitName }).eq('id', existing.id);
             }
-            return true; // Succes
+            return true;
         } else {
-            // Nieuwe insert
+            // Nieuwe Speler
             let username = explicitName;
             if (!username) {
                 const { data: p } = await supabase.from('profiles').select('username').eq('id', uId).maybeSingle();
@@ -255,22 +254,19 @@ export default function PlayBingo() {
                 has_bingo: false
             }).select().single();
             
-            if (error) {
-                console.error("DB Insert Error:", error);
-                return false; // Mislukt
-            }
+            if (error) { console.error(error); return false; }
             if (newP) myParticipantIdRef.current = newP.id; 
             
             fetchParticipants(sId);
-            return true; // Succes
+            return true;
         }
     } catch (e) {
-        console.error("Join Exception:", e);
+        console.error("Join Error", e);
         return false;
     }
   };
 
-  // --- HELPERS & ACTIONS ---
+  // --- HELPERS ---
   const saveGridLocally = (sId, uId, newGrid) => { try { localStorage.setItem(`pingo_grid_${sId}_${uId}`, JSON.stringify(newGrid)); } catch (e) {} };
   const getLocalGrid = (sId, uId) => { try { const saved = localStorage.getItem(`pingo_grid_${sId}_${uId}`); return saved ? JSON.parse(saved) : null; } catch (e) { return null; } };
   const generateGrid = (items, reset, ret) => { if(!items) return []; const s = [...items].sort(()=>0.5-Math.random()).slice(0,24); s.splice(12,0,"FREE SPACE"); if(!ret) setGrid(s); if(reset) { setMarked(Object.assign(new Array(25).fill(false), {12:true})); setBingoCount(0); } return s; };
@@ -306,7 +302,7 @@ export default function PlayBingo() {
     return () => supabase.removeChannel(ch); 
   }, [sessionId, isHost, winner, gameMode]);
 
-  // --- GUEST SCREEN ---
+  // --- RENDER GUEST INPUT ---
   if (showGuestInput) return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4 font-sans">
           <div className="bg-white p-8 rounded-[2.5rem] shadow-xl w-full max-w-md text-center border-4 border-orange-100 animate-in zoom-in">
@@ -316,7 +312,13 @@ export default function PlayBingo() {
               <h2 className="text-3xl font-black text-gray-900 italic uppercase mb-2">Welkom!</h2>
               <p className="text-gray-400 font-bold uppercase tracking-widest text-xs mb-8">Kies een naam om mee te spelen</p>
               
-              <input type="text" value={guestName} onChange={(e) => setGuestName(e.target.value)} placeholder="Jouw Naam" className="w-full p-4 bg-gray-100 rounded-xl font-bold mb-4 focus:ring-4 focus:ring-orange-200 outline-none border-2 border-gray-100 text-center uppercase placeholder:text-gray-300 shadow-inner"/>
+              <input 
+                type="text" 
+                value={guestName} 
+                onChange={(e) => setGuestName(e.target.value)} 
+                placeholder="Jouw Naam" 
+                className="w-full p-4 bg-gray-100 rounded-xl font-bold mb-4 focus:ring-4 focus:ring-orange-200 outline-none border-2 border-gray-100 text-center uppercase placeholder:text-gray-300 shadow-inner"
+              />
               <button 
                 onClick={handleGuestJoinSubmit} 
                 disabled={joining}
@@ -333,6 +335,7 @@ export default function PlayBingo() {
 
   return (
     <div className="min-h-screen bg-gray-50 pb-20 font-sans text-center sm:text-left relative overflow-x-hidden">
+        {/* MODALS */}
         {winner && showWinnerPopup && <div className="fixed inset-0 z-[99999] bg-black/95 flex items-center justify-center text-white text-center animate-in zoom-in p-4"><div className="max-w-xl w-full relative">{!isHost && <button onClick={() => setShowWinnerPopup(false)} className="absolute top-0 right-0 p-2 bg-white/10 hover:bg-white/20 rounded-full transition-colors"><X size={24} /></button>}<Crown size={100} className="mx-auto mb-6 text-yellow-400 animate-bounce drop-shadow-[0_0_15px_rgba(250,204,21,0.5)]"/><h1 className="text-5xl md:text-7xl font-black italic uppercase tracking-tighter mb-2 text-transparent bg-clip-text bg-gradient-to-br from-yellow-300 to-yellow-600">WINNAAR!</h1><p className="text-sm font-bold uppercase tracking-widest opacity-60 mb-6">Spel Afgelopen</p><div className="bg-white text-gray-900 rounded-[2rem] p-6 shadow-2xl transform rotate-2 mb-8"><div className="text-sm font-black text-gray-400 uppercase tracking-widest mb-1">De winnaar is</div><div className="text-3xl md:text-5xl font-black uppercase text-purple-600 break-words leading-tight">{winner}</div></div>{isHost ? <button onClick={resetDraws} className="bg-white/20 hover:bg-white text-white hover:text-black border-2 border-white px-8 py-4 rounded-xl font-black uppercase transition-all">Nieuw Spel Starten</button> : <button onClick={() => setShowWinnerPopup(false)} className="bg-white text-black px-8 py-4 rounded-xl font-black uppercase hover:scale-105 transition-transform shadow-lg">Sluiten & Bekijk Kaart</button>}</div></div>}
         {isFalseBingo && <div className="fixed inset-0 z-[99999] bg-red-600/95 flex items-center justify-center text-white text-center"><div><AlertOctagon size={100} className="mx-auto mb-4"/><h1 className="text-6xl font-black">VALSE BINGO!</h1></div></div>}
         {isKickedLocal && <div className="fixed inset-0 z-[99999] bg-black/70 flex items-center justify-center text-white"><h2 className="text-3xl font-black">Je bent verwijderd.</h2></div>}
