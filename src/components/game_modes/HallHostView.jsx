@@ -1,30 +1,39 @@
+import React from 'react';
 import { Users, Play, RotateCcw, Smartphone, Star, CheckCircle2, XCircle, ThumbsUp, ThumbsDown, AlertOctagon, AlertTriangle } from 'lucide-react';
 
 export default function HallHostView({ 
-    currentDraw, drawnItems, participants, verificationClaim, setVerificationClaim, handleHostDraw, resetDraws, session, sessionId, supabase, winPattern 
+    currentDraw, 
+    drawnItems = [], 
+    participants = [], 
+    verificationClaim, 
+    setVerificationClaim, 
+    handleHostDraw, 
+    resetDraws, 
+    session, 
+    sessionId, 
+    supabase, 
+    winPattern 
 }) {
 
     const handleFalseBingo = async () => {
+        if (!verificationClaim) return;
         const validIndices = verificationClaim.marked_indices.filter(idx => {
             if (idx === 12) return true;
             const itemText = verificationClaim.grid_snapshot[idx];
             return drawnItems.includes(itemText);
         });
         await supabase.from('session_participants').update({ has_bingo: false, marked_indices: validIndices, updated_at: new Date().toISOString() }).eq('id', verificationClaim.id);
-        
-        // FIX: Kanaalnaam matcht nu met PlayBingo.jsx
         await supabase.channel(`room_${sessionId}`).send({ type: 'broadcast', event: 'false_bingo', payload: {} });
         setVerificationClaim(null);
     };
 
     const handleConfirmWin = async () => {
+        if (!verificationClaim) return;
         await supabase.from('bingo_sessions').update({ 
             status: 'finished', 
-            winner_name: verificationClaim.user_name, // NAAM OPSLAAN
+            winner_name: verificationClaim.user_name,
             updated_at: new Date().toISOString() 
         }).eq('id', sessionId);
-        
-        // FIX: Kanaalnaam matcht nu met PlayBingo.jsx
         await supabase.channel(`room_${sessionId}`).send({ type: 'broadcast', event: 'game_won', payload: { winnerName: verificationClaim.user_name } });
         setVerificationClaim(null);
     };
@@ -33,9 +42,7 @@ export default function HallHostView({
         if (!grid || !marked) return [];
         const rows = [[0,1,2,3,4],[5,6,7,8,9],[10,11,12,13,14],[15,16,17,18,19],[20,21,22,23,24],[0,5,10,15,20],[1,6,11,16,21],[2,7,12,17,22],[3,8,13,18,23],[4,9,14,19,24],[0,6,12,18,24],[4,8,12,16,20]];
         let winningIndices = new Set();
-
         if (winPattern === 'full') return marked; 
-
         rows.forEach(row => {
             if (row.every(index => marked.includes(index))) {
                 row.forEach(idx => winningIndices.add(idx));
@@ -55,7 +62,6 @@ export default function HallHostView({
                             <h2 className="text-xl font-black uppercase italic text-gray-900 flex items-center gap-2"><AlertOctagon className="text-orange-500"/> Controle</h2>
                             <span className="bg-orange-100 text-orange-600 px-3 py-1 rounded-xl font-black text-xs uppercase tracking-wide truncate max-w-[150px]">{verificationClaim.user_name}</span>
                         </div>
-                        
                         <div className="flex-1 overflow-y-auto bg-gray-50 rounded-2xl p-4 border-2 border-gray-100 mb-4">
                             <div className="grid grid-cols-5 gap-2">
                                 {verificationClaim?.grid_snapshot?.map((item, i) => {
@@ -79,7 +85,6 @@ export default function HallHostView({
                                 }) || <p className="col-span-5 text-center">Laden...</p>}
                             </div>
                         </div>
-
                         <div className="flex gap-3">
                             <button onClick={handleFalseBingo} className="flex-1 bg-red-50 text-red-600 border-2 border-red-100 py-3 rounded-xl font-black uppercase text-xs hover:bg-red-500 hover:text-white transition-all flex items-center justify-center gap-2"><ThumbsDown size={16}/> Valse Bingo</button>
                             <button onClick={handleConfirmWin} className="flex-1 bg-green-500 text-white border-2 border-green-600 py-3 rounded-xl font-black uppercase text-xs hover:bg-green-600 transition-all shadow-xl flex items-center justify-center gap-2"><ThumbsUp size={16}/> Goedkeuren</button>
@@ -89,7 +94,6 @@ export default function HallHostView({
             )}
 
             <div className="flex flex-col-reverse lg:flex-row gap-6">
-                {/* REST VAN DE LAYOUT BLIJFT GELIJK - ALLEEN CHANNEL NAAM AANGEPAST IN FUNCTIES */}
                 <div className="flex-1 bg-white rounded-[2.5rem] shadow-2xl border-4 border-purple-500 overflow-hidden relative min-h-[300px] md:min-h-[400px] flex flex-col">
                     <div className="bg-purple-500 p-3 text-center border-b border-purple-400 flex justify-between items-center px-6">
                         <h2 className="text-white font-black uppercase tracking-[0.2em] text-xs md:text-sm">{currentDraw ? "ON AIR" : "LOBBY FASE"}</h2>
