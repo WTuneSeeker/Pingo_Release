@@ -16,11 +16,11 @@ export default function PlayBingo() {
   const navigate = useNavigate();
 
   // --- FASE 1: WIE BEN IK? ---
-  const [isCheckingAuth, setIsCheckingAuth] = useState(true); // We weten nog niks
-  const [needsOnboarding, setNeedsOnboarding] = useState(true); // Standaard: DEUR DICHT
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
+  const [needsOnboarding, setNeedsOnboarding] = useState(true); // "Deur dicht"
   const [myUserId, setMyUserId] = useState(null);
   const [myName, setMyName] = useState('');
-  const [isJoining, setIsJoining] = useState(false); // Spinner voor de knop
+  const [isJoining, setIsJoining] = useState(false);
 
   // --- FASE 2: SPEL DATA ---
   const [session, setSession] = useState(null);
@@ -69,19 +69,16 @@ export default function PlayBingo() {
         // A. Ben ik ingelogd? (Host)
         const { data: { user } } = await supabase.auth.getUser();
         let userId = user?.id;
-        let username = '';
 
         if (user) {
             // Host mag altijd door
             userId = user.id;
             const { data: p } = await supabase.from('profiles').select('username').eq('id', userId).single();
-            username = p?.username || 'Host';
             setMyUserId(userId);
-            setMyName(username);
+            setMyName(p?.username || 'Host');
             
-            // Laad data en zet deur open
             await loadGameData(sessionId, userId);
-            setNeedsOnboarding(false); // Host hoeft geen naam in te vullen
+            setNeedsOnboarding(false);
             setIsCheckingAuth(false);
             return;
         }
@@ -95,11 +92,11 @@ export default function PlayBingo() {
         userId = guestId;
         setMyUserId(userId);
 
-        // C. Pre-fill naam uit memory (maar auto-join NIET)
+        // C. Pre-fill naam uit memory
         const storedName = localStorage.getItem('pingo_guest_name');
         if (storedName) setMyName(storedName);
 
-        // D. CRUCIAAL: Check of ik al in de DB sta voor DEZE sessie
+        // D. Check of ik al in de DB sta voor DEZE sessie
         const { data: existingParticipant } = await supabase
             .from('session_participants')
             .select('id, user_name')
@@ -108,13 +105,13 @@ export default function PlayBingo() {
             .maybeSingle();
 
         if (existingParticipant) {
-            // Ja, ik ben al bekend -> Deur open, laad spel
+            // Ja -> Deur open
             myParticipantIdRef.current = existingParticipant.id;
-            setMyName(existingParticipant.user_name);
+            if(!storedName) setMyName(existingParticipant.user_name);
             await loadGameData(sessionId, userId);
-            setNeedsOnboarding(false); // SKIP invoer scherm
+            setNeedsOnboarding(false);
         } else {
-            // Nee, ik ben nieuw -> DEUR DICHT. Wacht op input.
+            // Nee -> DEUR DICHT. Wacht op input.
             setNeedsOnboarding(true); 
         }
         
@@ -125,20 +122,19 @@ export default function PlayBingo() {
   }, [sessionId]);
 
   // ===========================================================================
-  // 2. DE "MEEDOEN" ACTIE (Hier gebeurt de magic)
+  // 2. DE "MEEDOEN" ACTIE
   // ===========================================================================
   const handleJoinGame = async () => {
-      if (!myName.trim()) return alert("Vul een naam in, maat.");
+      if (!myName.trim()) return alert("Vul een naam in!");
       
       setIsJoining(true);
       localStorage.setItem('pingo_guest_name', myName);
 
-      // Haal eerst de kaart items op (nodig voor grid generatie)
-      // We doen dit hier pas om te voorkomen dat we data laden voor iemand die niet joint
-      const { data: sData } = await supabase.from('bingo_sessions').select('*, bingo_cards(*)').eq('id', sessionId).single();
+      // Haal sessie op (nodig voor items)
+      const { data: sData, error: sError } = await supabase.from('bingo_sessions').select('*, bingo_cards(*)').eq('id', sessionId).single();
       
-      if (!sData) {
-          alert("Sessie bestaat niet meer.");
+      if (sError || !sData) {
+          alert("Fout: Sessie niet gevonden.");
           setIsJoining(false);
           return;
       }
@@ -149,7 +145,7 @@ export default function PlayBingo() {
       setGrid(g);
       saveGridLocally(sessionId, myUserId, g);
 
-      // INSERT IN DB (Dit zorgt dat de teller omhoog gaat bij de host)
+      // INSERT IN DB
       try {
           const { data: newP, error } = await supabase.from('session_participants').insert({
               session_id: sessionId,
@@ -160,16 +156,19 @@ export default function PlayBingo() {
               has_bingo: false
           }).select().single();
 
-          if (error) throw error;
+          if (error) {
+              console.error("Supabase Error:", error);
+              throw new Error(error.message); // Gooi foutmelding naar catch
+          }
 
           // SUCCES!
           myParticipantIdRef.current = newP.id;
-          await loadGameData(sessionId, myUserId); // Laad de rest van het spel
+          await loadGameData(sessionId, myUserId); 
           setNeedsOnboarding(false); // GOOI DE DEUR OPEN
 
       } catch (err) {
           console.error("Join error:", err);
-          alert("Kon niet joinen. Probeer opnieuw.");
+          alert("FOUT BIJ JOINEN: " + err.message + "\n\nControleer of je het SQL script hebt uitgevoerd in Supabase!");
       } finally {
           setIsJoining(false);
       }
@@ -188,18 +187,20 @@ export default function PlayBingo() {
           setWinPattern(data.win_pattern || '1line');
           setCurrentDraw(data.current_draw);
           setDrawnItems(data.drawn_items || []);
+          
           if(data.status === 'finished') {
               setWinner(data.winner_name);
               setShowWinnerPopup(true);
           }
+          
           fetchParticipants(sId);
           
-          // Restore lokale status als we al bestonden
+          // Restore lokale status
           const localGrid = getLocalGrid(sId, uId);
           if (localGrid) setGrid(localGrid);
           
-          // Check DB status voor marks (als refresh)
-          if (!isHost) {
+          // Restore DB status (marks)
+          if (data.host_id !== uId) { // Alleen voor spelers
              const { data: p } = await supabase.from('session_participants').select('*').eq('session_id', sId).eq('user_id', uId).maybeSingle();
              if (p) {
                  if (p.marked_indices) {
@@ -208,6 +209,7 @@ export default function PlayBingo() {
                      setMarked(nm);
                      setBingoCount(checkBingoRows(nm));
                  }
+                 // Als lokaal leeg is, pak DB grid
                  if (!localGrid && p.grid_snapshot) {
                      setGrid(p.grid_snapshot);
                      saveGridLocally(sId, uId, p.grid_snapshot);
@@ -217,28 +219,37 @@ export default function PlayBingo() {
       }
   };
 
-  // ... (Helpers: generateGrid, checkBingoRows, saveGridLocally, getLocalGrid etc.)
+  // Helpers
   const saveGridLocally = (sId, uId, newGrid) => { try { localStorage.setItem(`pingo_grid_${sId}_${uId}`, JSON.stringify(newGrid)); } catch (e) {} };
   const getLocalGrid = (sId, uId) => { try { const saved = localStorage.getItem(`pingo_grid_${sId}_${uId}`); return saved ? JSON.parse(saved) : null; } catch (e) { return null; } };
   const generateGrid = (items, reset, ret) => { if(!items) return []; const s = [...items].sort(()=>0.5-Math.random()).slice(0,24); s.splice(12,0,"FREE SPACE"); if(!ret) setGrid(s); if(reset) { setMarked(Object.assign(new Array(25).fill(false), {12:true})); setBingoCount(0); } return s; };
   const checkBingoRows = (m) => [[0,1,2,3,4],[5,6,7,8,9],[10,11,12,13,14],[15,16,17,18,19],[20,21,22,23,24],[0,5,10,15,20],[1,6,11,16,21],[2,7,12,17,22],[3,8,13,18,23],[4,9,14,19,24],[0,6,12,18,24],[4,8,12,16,20]].filter(p=>p.every(i=>m[i])).length;
-  
   const fetchParticipants = async (sId) => { const { data } = await supabase.from('session_participants').select('*').eq('session_id', sId); if(data) setParticipants(data); };
   
-  // ACTIONS
+  // Actions
   const handleHostDraw = async () => { if (!card?.items || winner || isDrawing) return; setIsDrawing(true); const available = card.items.filter(item => !drawnItems.includes(item)); if (available.length === 0) { alert("Op!"); setIsDrawing(false); return; } const randomItem = available[Math.floor(Math.random() * available.length)]; const newDrawnList = [...drawnItems, randomItem]; setDrawnItems(newDrawnList); setCurrentDraw(randomItem); await supabase.from('bingo_sessions').update({ current_draw: randomItem, drawn_items: newDrawnList, updated_at: new Date().toISOString() }).eq('id', sessionId); setIsDrawing(false); };
   const resetDraws = async () => { if(confirm("Reset?")) { await supabase.from('bingo_sessions').update({ current_draw: null, drawn_items: [], status: 'active', winner_name: null }).eq('id', sessionId); setWinner(null); setShowWinnerPopup(false); setVerificationClaim(null); } };
-  const toggleTile = async (index) => { if (index === 12 || isKickedLocal || winner) return; const nm = [...marked]; nm[index] = !nm[index]; setMarked(nm); const count = checkBingoRows(nm); setBingoCount(count); const isFull = nm.every(m => m); let hasBingo = false; if (winPattern === '1line' && count >= 1) hasBingo = true; else if (winPattern === '2lines' && count >= 2) hasBingo = true; else if (winPattern === 'full' && isFull) hasBingo = true; if (sessionId && myParticipantIdRef.current) { await supabase.from('session_participants').update({ marked_indices: nm.map((m, i) => m ? i : null).filter(n => n !== null), has_bingo: hasBingo, updated_at: new Date().toISOString() }).eq('id', myParticipantIdRef.current); } };
+  
+  const toggleTile = async (index) => { 
+      if (index === 12 || isKickedLocal || winner) return; 
+      const nm = [...marked]; nm[index] = !nm[index]; setMarked(nm); 
+      const count = checkBingoRows(nm); setBingoCount(count); 
+      const isFull = nm.every(m => m); 
+      let hasBingo = false; 
+      if (winPattern === '1line' && count >= 1) hasBingo = true; 
+      else if (winPattern === '2lines' && count >= 2) hasBingo = true; 
+      else if (winPattern === 'full' && isFull) hasBingo = true; 
+      
+      if (sessionId && myParticipantIdRef.current) { 
+          await supabase.from('session_participants').update({ 
+              marked_indices: nm.map((m, i) => m ? i : null).filter(n => n !== null), 
+              has_bingo: hasBingo, 
+              updated_at: new Date().toISOString() 
+          }).eq('id', myParticipantIdRef.current); 
+      } 
+  };
+  
   const handleShuffle = async () => { const g = generateGrid(card?.items, true, true); setShowShuffleConfirm(false); setGrid(g); if (myParticipantIdRef.current) { saveGridLocally(sessionId, myUserId, g); await supabase.from('session_participants').update({ marked_indices: [12], has_bingo: false, grid_snapshot: g }).eq('id', myParticipantIdRef.current); } };
-
-  // --- FILTER PARTICIPANTS FOR DISPLAY ---
-  const displayParticipants = useMemo(() => {
-    let list = [...participants];
-    if (gameMode === 'hall' && session?.host_id) {
-        list = list.filter(p => p.user_id !== session.host_id);
-    }
-    return list.sort((a, b) => (b.marked_indices?.length || 0) - (a.marked_indices?.length || 0));
-  }, [participants, gameMode, session]);
 
   // --- BRANDING ---
   const isFullCard = marked.every(m => m);
@@ -253,7 +264,7 @@ export default function PlayBingo() {
 
   // --- REALTIME ---
   useEffect(() => {
-    if (!sessionId || needsOnboarding) return; // Luister niet als je nog in de wachtrij staat
+    if (!sessionId || needsOnboarding) return;
     const ch = supabase.channel(`room_${sessionId}`).on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'bingo_sessions', filter: `id=eq.${sessionId}` }, (pl) => { 
         setSession(prev => ({...prev, ...pl.new})); 
         if(pl.new.game_mode) setGameMode(pl.new.game_mode); 
@@ -318,22 +329,17 @@ export default function PlayBingo() {
   // ===========================================================================
   // RENDER: HET SPEL
   // ===========================================================================
-  
-  // Als we hier zijn, is needsOnboarding FALSE en session geladen.
   if (!session) return <div className="min-h-screen flex items-center justify-center">Laden...</div>;
 
   return (
     <div className="min-h-screen bg-gray-50 pb-20 font-sans text-center sm:text-left relative overflow-x-hidden">
         
-        {/* WINNER POPUP */}
+        {/* MODALS (Z-INDEX 99999) */}
         {winner && showWinnerPopup && <div className="fixed inset-0 z-[99999] bg-black/95 flex items-center justify-center text-white text-center animate-in zoom-in p-4"><div className="max-w-xl w-full relative">{!isHost && <button onClick={() => setShowWinnerPopup(false)} className="absolute top-0 right-0 p-2 bg-white/10 hover:bg-white/20 rounded-full transition-colors"><X size={24} /></button>}<Crown size={100} className="mx-auto mb-6 text-yellow-400 animate-bounce"/><h1 className="text-5xl md:text-7xl font-black italic uppercase tracking-tighter mb-2 text-transparent bg-clip-text bg-gradient-to-br from-yellow-300 to-yellow-600">WINNAAR!</h1><p className="text-sm font-bold uppercase tracking-widest opacity-60 mb-6">Spel Afgelopen</p><div className="bg-white text-gray-900 rounded-[2rem] p-6 shadow-2xl transform rotate-2 mb-8"><div className="text-sm font-black text-gray-400 uppercase tracking-widest mb-1">De winnaar is</div><div className="text-3xl md:text-5xl font-black uppercase text-purple-600 break-words leading-tight">{winner}</div></div>{isHost ? <button onClick={resetDraws} className="bg-white/20 hover:bg-white text-white hover:text-black border-2 border-white px-8 py-4 rounded-xl font-black uppercase transition-all">Nieuw Spel Starten</button> : <button onClick={() => setShowWinnerPopup(false)} className="bg-white text-black px-8 py-4 rounded-xl font-black uppercase hover:scale-105 transition-transform shadow-lg">Sluiten & Bekijk Kaart</button>}</div></div>}
-        
-        {/* OVERIGE MODALS */}
         {isFalseBingo && <div className="fixed inset-0 z-[99999] bg-red-600/95 flex items-center justify-center text-white text-center"><div><AlertOctagon size={100} className="mx-auto mb-4"/><h1 className="text-6xl font-black">VALSE BINGO!</h1></div></div>}
         {isKickedLocal && <div className="fixed inset-0 z-[99999] bg-black/70 flex items-center justify-center text-white"><h2 className="text-3xl font-black">Je bent verwijderd.</h2></div>}
         {showQR && <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/80" onClick={()=>setShowQR(false)}><div className="bg-white p-8 rounded-3xl text-center"><img src={`https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${window.location.href}`} className="w-64 h-64 mix-blend-multiply"/><p className="mt-4 font-black text-2xl text-gray-900">{session?.join_code}</p></div></div>}
 
-        {/* HEADER */}
         <div className="pt-8 px-6 pb-6 relative z-50">
             <div className="max-w-6xl mx-auto relative group">
                 <div className="relative z-50 bg-gray-900 rounded-[2.5rem] px-6 py-4 flex flex-col md:flex-row justify-between items-center shadow-2xl gap-4 md:gap-0">
@@ -381,8 +387,11 @@ export default function PlayBingo() {
                 />
             ) : (
                 <PlayerView 
-                    grid={grid} marked={marked} toggleTile={toggleTile} handleShuffleClick={handleShuffle}
-                    bingoCount={bingoCount} gameMode={gameMode} currentDraw={currentDraw} participants={displayParticipants} isHost={isHost} session={session} sessionId={sessionId} myUserId={myUserId} supabase={supabase} showShuffleConfirm={showShuffleConfirm} setShowShuffleConfirm={setShowShuffleConfirm} confirmShuffle={handleShuffle}
+                    grid={grid} marked={marked} toggleTile={toggleTile} handleShuffleClick={() => {
+                        const g = generateGrid(card.items, true, true);
+                        if(myParticipantIdRef.current) supabase.from('session_participants').update({ grid_snapshot: g, marked_indices: [12] }).eq('id', myParticipantIdRef.current).then();
+                    }}
+                    bingoCount={bingoCount} gameMode={gameMode} currentDraw={currentDraw} participants={displayParticipants} isHost={isHost} session={session} sessionId={sessionId} myUserId={myUserId} supabase={supabase} showShuffleConfirm={showShuffleConfirm} setShowShuffleConfirm={setShowShuffleConfirm} confirmShuffle={()=>{}}
                 />
             )}
         </div>
