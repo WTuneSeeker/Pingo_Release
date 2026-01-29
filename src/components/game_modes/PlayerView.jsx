@@ -20,7 +20,6 @@ export default function PlayerView({
     confirmShuffle 
 }) {
     
-    // FIX: Volledige Branding Lijst (ook hier nodig voor lobby)
     const getBranding = (rowCount, isFull) => {
         const titles = {
             0: { title: "PINGO", icon: <Sparkles size={16} /> },
@@ -93,7 +92,6 @@ export default function PlayerView({
                 </div>
             </div>
 
-            {/* FIX: LOBBY ALLEEN TONEN BIJ MEERDERE SPELERS */}
             {participants && participants.length > 0 && gameMode !== 'hall' && session?.max_players > 1 && (
                 <div className="w-full lg:w-96 shrink-0 bg-white/80 backdrop-blur-xl rounded-[2.5rem] p-6 shadow-2xl border border-white/50 mb-12 lg:sticky lg:top-32">
                     <div className="flex items-center justify-between mb-6 pl-2"><h3 className="text-xl font-black text-gray-900 flex items-center gap-3 italic uppercase"><Users className="text-orange-500" size={24} /> Lobby <span className="bg-orange-100 text-orange-600 px-2 py-0.5 rounded-lg text-sm not-italic ml-1">{participants.length}</span></h3></div>
@@ -106,7 +104,6 @@ export default function PlayerView({
                             
                             const pWins = [[0,1,2,3,4],[5,6,7,8,9],[10,11,12,13,14],[15,16,17,18,19],[20,21,22,23,24],[0,5,10,15,20],[1,6,11,16,21],[2,7,12,17,22],[3,8,13,18,23],[4,9,14,19,24],[0,6,12,18,24],[4,8,12,16,20]].filter(r => r.every(i => tempG[i])).length;
                             const branding = getBranding(pWins, pFull);
-                            
                             const hasStatus = (gameMode === 'rows' && pWins > 0) || pFull;
 
                             return (

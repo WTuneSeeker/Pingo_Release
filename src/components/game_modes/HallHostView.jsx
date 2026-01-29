@@ -51,8 +51,6 @@ export default function HallHostView({
         return Array.from(winningIndices);
     };
 
-    const winningIndices = verificationClaim ? getWinningIndices(verificationClaim.grid_snapshot, verificationClaim.marked_indices) : [];
-
     return (
         <div className="w-full max-w-6xl mx-auto -mt-24 relative z-20 animate-in slide-in-from-top-4 duration-500">
             {verificationClaim && (
@@ -67,7 +65,7 @@ export default function HallHostView({
                                 {verificationClaim?.grid_snapshot?.map((item, i) => {
                                     const isMarked = verificationClaim.marked_indices.includes(i);
                                     const isDrawn = i === 12 || drawnItems.includes(item);
-                                    const isPartOfWin = winningIndices.includes(i);
+                                    const isPartOfWin = getWinningIndices(verificationClaim.grid_snapshot, verificationClaim.marked_indices).includes(i);
                                     const isNumber = /^\d+$/.test(item);
                                     let cellClass = 'bg-white text-gray-300 border-gray-200';
                                     if (i === 12) cellClass = 'bg-gray-800 text-white border-gray-900';
