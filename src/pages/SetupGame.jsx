@@ -4,7 +4,7 @@ import { supabase } from '../supabaseClient';
 import { 
   Settings, Users, ChevronLeft, Play, 
   User, CheckCircle2, Save, Tv, 
-  Minus, Plus, AlignJustify, Grid, LayoutGrid, Loader2, List
+  Minus, Plus, AlignJustify, Grid, LayoutGrid, Loader2, List, Type // 'Type' icoon toegevoegd
 } from 'lucide-react';
 
 export default function SetupGame() {
@@ -15,20 +15,26 @@ export default function SetupGame() {
   const [loading, setLoading] = useState(true);
   
   // Settings State
-  const [gameMode, setGameMode] = useState('rows'); // 'rows' (standaard UI) of 'hall' (host UI)
+  const [sessionName, setSessionName] = useState(''); // NIEUW: Sessie naam
+  const [gameMode, setGameMode] = useState('rows'); 
   const [sessionType, setSessionType] = useState('solo'); 
   const [maxPlayers, setMaxPlayers] = useState(10);
-  const [winPattern, setWinPattern] = useState('1line'); // '1line', '2lines', 'full'
+  const [winPattern, setWinPattern] = useState('1line'); 
   const [isProcessing, setIsProcessing] = useState(false);
 
   useEffect(() => {
     const init = async () => {
       const { data: cardData } = await supabase.from('bingo_cards').select('*').eq('id', cardId).single();
-      if (cardData) setCard(cardData);
+      if (cardData) {
+        setCard(cardData);
+        // Standaard naam instellen als het een nieuwe sessie is
+        if (!sessionId) setSessionName(`${cardData.title} Sessie`);
+      }
 
       if (sessionId) {
         const { data: sessionData } = await supabase.from('bingo_sessions').select('*').eq('id', sessionId).single();
         if (sessionData) {
+          setSessionName(sessionData.name || ''); // NIEUW: Naam inladen
           setGameMode(sessionData.game_mode || 'rows');
           setMaxPlayers(sessionData.max_players || 10);
           setWinPattern(sessionData.win_pattern || '1line');
@@ -55,7 +61,11 @@ export default function SetupGame() {
 
     const finalMaxPlayers = sessionType === 'solo' ? 1 : maxPlayers;
 
+    // NIEUW: Fallback naam als input leeg is
+    const finalName = sessionName.trim() === '' ? `${card?.title || 'Bingo'} Sessie` : sessionName;
+
     const payload = {
+        name: finalName, // NIEUW: Naam opslaan
         game_mode: gameMode,
         max_players: finalMaxPlayers,
         win_pattern: winPattern, 
@@ -82,15 +92,13 @@ export default function SetupGame() {
       setGameMode(mode);
       if (type === 'group' && maxPlayers < 2) setMaxPlayers(10);
       
-      // Reset winPattern naar logical defaults bij switch
       if (mode === 'hall') setWinPattern('1line'); 
-      else setWinPattern('1line'); // '1line' fungeert als 'Rijen Mode' (starten bij 1 lijn)
+      else setWinPattern('1line'); 
   };
 
   const bgClass = gameMode === 'hall' ? 'bg-purple-500' : 'bg-orange-500';
   const textClass = gameMode === 'hall' ? 'text-purple-500' : 'text-orange-500';
-  const borderClass = gameMode === 'hall' ? 'border-purple-500' : 'border-orange-500';
-
+  
   if (loading) return <div className={`min-h-screen flex items-center justify-center font-black ${textClass} animate-pulse`}>LADEN...</div>;
 
   return (
@@ -103,12 +111,29 @@ export default function SetupGame() {
             <div className={`w-14 h-14 rounded-2xl flex items-center justify-center ${gameMode === 'hall' ? 'bg-purple-100 text-purple-500' : 'bg-orange-100 text-orange-500'}`}><Settings size={28} /></div>
         </div>
 
-        <div className="text-center mb-10">
+        <div className="text-center mb-8">
             <h1 className="text-3xl md:text-4xl font-black text-gray-900 italic uppercase mb-2">{card?.title}</h1>
             <p className="text-gray-400 font-bold uppercase tracking-widest text-xs">Instellingen</p>
         </div>
 
         <div className="space-y-8">
+
+            {/* NIEUW: 0. SESSIE NAAM */}
+            <div>
+              <label className="block text-xs font-black text-gray-400 uppercase tracking-widest mb-4 ml-2">Naam van de sessie</label>
+              <div className="flex items-center bg-gray-50 rounded-3xl border border-gray-100 p-2 focus-within:border-gray-300 focus-within:ring-4 focus-within:ring-gray-100 transition-all">
+                <div className={`p-3 rounded-2xl mr-3 transition-colors ${gameMode === 'hall' ? 'bg-purple-100 text-purple-500' : 'bg-orange-100 text-orange-500'}`}>
+                    <Type size={20} />
+                </div>
+                <input 
+                    type="text" 
+                    value={sessionName}
+                    onChange={(e) => setSessionName(e.target.value)}
+                    placeholder="Bijv. Vrijmibo Bingo..."
+                    className="bg-transparent w-full font-bold text-gray-900 outline-none placeholder:text-gray-300 h-full py-2"
+                />
+              </div>
+            </div>
             
             {/* 1. SPELTYPE */}
             <div>
@@ -146,7 +171,7 @@ export default function SetupGame() {
                 </label>
                 
                 {gameMode === 'hall' ? (
-                    /* ZAAL MODUS: 3 OPTIES (1 LIJN, 2 LIJNEN, VOL) */
+                    /* ZAAL MODUS: 3 OPTIES */
                     <div className="grid grid-cols-3 gap-3">
                         <button onClick={() => setWinPattern('1line')} className={`flex flex-col items-center justify-center p-4 rounded-2xl border-2 transition-all ${winPattern === '1line' ? 'border-purple-500 bg-purple-50 text-purple-700' : 'border-gray-100 text-gray-400'}`}>
                             <AlignJustify size={24} className="mb-2"/> <span className="text-[10px] font-black uppercase">1 Lijn</span>
@@ -159,7 +184,7 @@ export default function SetupGame() {
                         </button>
                     </div>
                 ) : (
-                    /* SOLO/GROEP: 2 OPTIES (RIJEN MODE, VOLLE KAART) */
+                    /* SOLO/GROEP: 2 OPTIES */
                     <div className="grid grid-cols-2 gap-3">
                         <button onClick={() => setWinPattern('1line')} className={`flex items-center justify-center gap-3 p-4 rounded-2xl border-2 transition-all ${winPattern === '1line' ? 'border-orange-500 bg-orange-50 text-orange-700' : 'border-gray-100 text-gray-400'}`}>
                             <List size={20}/> 
@@ -185,7 +210,7 @@ export default function SetupGame() {
                     <div className="flex items-center justify-between bg-gray-50 p-4 rounded-2xl border border-gray-100">
                         <div className="flex items-center gap-3">
                             <div className={`p-2 rounded-xl ${gameMode === 'hall' ? 'bg-purple-100 text-purple-500' : 'bg-orange-100 text-orange-500'}`}><Users size={20} /></div>
-                            <div><p className="font-black text-xs uppercase text-gray-900">Aantal Spelers</p><p className="text-[10px] font-bold text-gray-400">Max aantal deelnemers</p></div>
+                            <div><p className="text-[10px] font-black text-gray-900 uppercase">Aantal Spelers</p><p className="text-[8px] font-bold text-gray-400">Max aantal deelnemers</p></div>
                         </div>
                         <div className="flex items-center gap-2 bg-white p-1 rounded-xl border border-gray-200 shadow-sm">
                             <button onClick={() => setMaxPlayers(Math.max(2, maxPlayers - 1))} className="w-8 h-8 flex items-center justify-center rounded-lg bg-gray-100 text-gray-600 hover:bg-gray-200 font-bold active:scale-90 transition-all"><Minus size={14} /></button>

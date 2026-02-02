@@ -7,8 +7,9 @@ import {
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
-// Importeer de losse views
+// Importeer ALLE views
 import HallHostView from '../components/game_modes/HallHostView';
+import ClassicHostView from '../components/game_modes/ClassicHostView';
 import PlayerView from '../components/game_modes/PlayerView';
 
 export default function PlayBingo() {
@@ -36,8 +37,8 @@ export default function PlayBingo() {
   const [verificationClaim, setVerificationClaim] = useState(null);
   
   // WINNER STATE
-  const [winner, setWinner] = useState(null); // Bevat de NAAM van de winnaar
-  const [showWinnerPopup, setShowWinnerPopup] = useState(false); // Bepaalt zichtbaarheid popup
+  const [winner, setWinner] = useState(null); 
+  const [showWinnerPopup, setShowWinnerPopup] = useState(false); 
   const [isDrawing, setIsDrawing] = useState(false);
 
   // UI STATE
@@ -56,7 +57,7 @@ export default function PlayBingo() {
   const initializationRan = useRef(false);
 
   const isHost = session?.host_id === currentUserIdState;
-  const isMultiplayer = session && (session.max_players > 1 || session.game_mode === 'hall');
+  const isMultiplayer = session && (session.max_players > 1 || session.game_mode === 'hall' || session.game_mode === 'classic');
 
   useEffect(() => { gridRef.current = grid; }, [grid]);
 
@@ -69,7 +70,8 @@ export default function PlayBingo() {
             marked_indices: marked.map((m,i)=>m?i:null).filter(x=>x!==null) 
         });
     }
-    if (gameMode === 'hall' && session?.host_id) {
+    // Filter host eruit voor hall en classic mode
+    if ((gameMode === 'hall' || gameMode === 'classic') && session?.host_id) {
         list = list.filter(p => p.user_id !== session.host_id);
     }
     return list.sort((a, b) => (b.marked_indices?.length || 0) - (a.marked_indices?.length || 0));
@@ -94,7 +96,7 @@ export default function PlayBingo() {
   
   const soloBranding = getBranding(bingoCount, isFullCard);
   let showFlag = false;
-  if (gameMode !== 'hall') {
+  if (gameMode !== 'hall' && gameMode !== 'classic') { // Geen branding vlag bij host modes
       if (winPattern === '1line' && bingoCount >= 1) showFlag = true;
       else if (winPattern === '2lines' && bingoCount >= 2) showFlag = true;
       else if (winPattern === 'full' && isFullCard) showFlag = true;
@@ -121,6 +123,32 @@ export default function PlayBingo() {
   const saveGridLocally = (sId, uId, newGrid) => { try { localStorage.setItem(`pingo_grid_${sId}_${uId}`, JSON.stringify(newGrid)); } catch (e) {} };
   const getLocalGrid = (sId, uId) => { try { const saved = localStorage.getItem(`pingo_grid_${sId}_${uId}`); return saved ? JSON.parse(saved) : null; } catch (e) { return null; } };
 
+  // NIEUW: Classic Bingo Grid Generator (1-75)
+  const generateClassicGrid = () => {
+    const getNums = (min, max, count) => {
+        const arr = [];
+        while(arr.length < count) {
+            const r = Math.floor(Math.random() * (max - min + 1)) + min;
+            if(arr.indexOf(r) === -1) arr.push(r);
+        }
+        return arr;
+    };
+    const B = getNums(1, 15, 5);
+    const I = getNums(16, 30, 5);
+    const N = getNums(31, 45, 4); // 4 want free space
+    const G = getNums(46, 60, 5);
+    const O = getNums(61, 75, 5);
+
+    // Zet om naar rij-voor-rij formaat (0-24)
+    return [
+        B[0], I[0], N[0], G[0], O[0],
+        B[1], I[1], N[1], G[1], O[1],
+        B[2], I[2], "BINGO", G[2], O[2], // Center Free
+        B[3], I[3], N[2], G[3], O[3],
+        B[4], I[4], N[3], G[4], O[4]
+    ];
+  };
+
   const loadSessionData = async (sId, uId) => {
     setLoading(true);
     try {
@@ -130,33 +158,45 @@ export default function PlayBingo() {
         setWinPattern(sessionData.win_pattern || '1line'); 
         setCurrentDraw(sessionData.current_draw);
         setDrawnItems(sessionData.drawn_items || []);
-        setCard(sessionData.bingo_cards);
         
-        // Als spel al klaar is bij laden
+        // Bij classic is er geen card object, dus fallback titel
+        if (sessionData.game_mode === 'classic') {
+            setCard({ title: 'Classic Bingo 1-75' });
+        } else {
+            setCard(sessionData.bingo_cards);
+        }
+        
         if (sessionData.status === 'finished') {
-            setWinner("Iemand"); // Fallback
+            setWinner("Iemand"); 
             setShowWinnerPopup(true);
         }
 
         const isHostUser = sessionData.host_id === uId;
-        if (!(sessionData.game_mode === 'hall' && isHostUser)) await joinOrRestoreParticipant(sId, sessionData.bingo_cards.items, uId);
+        // Als Host in Hall of Classic mode, hoeft hij geen deelnemer te zijn
+        if (!((sessionData.game_mode === 'hall' || sessionData.game_mode === 'classic') && isHostUser)) {
+            await joinOrRestoreParticipant(sId, sessionData.bingo_cards?.items, uId, sessionData.game_mode);
+        }
         fetchParticipants(sId);
-    } catch (e) { setErrorMsg("Fout bij laden sessie."); } finally { setLoading(false); }
+    } catch (e) { console.error(e); setErrorMsg("Fout bij laden sessie."); } finally { setLoading(false); }
   };
 
-  const joinOrRestoreParticipant = async (sId, cardItems, uId) => {
+  const joinOrRestoreParticipant = async (sId, cardItems, uId, mode) => {
     const localGrid = getLocalGrid(sId, uId);
     if (localGrid) setGrid(localGrid); 
 
     const { data: existing } = await supabase.from('session_participants').select('*').eq('session_id', sId).eq('user_id', uId).maybeSingle();
+
+    // Bepaal welk grid we moeten gebruiken (Classic of Custom)
+    const newGrid = mode === 'classic' ? generateClassicGrid() : generateGrid(cardItems, false, true);
 
     if (existing) {
         myParticipantIdRef.current = existing.id;
         if (existing.grid_snapshot?.length > 0 && JSON.stringify(localGrid) !== JSON.stringify(existing.grid_snapshot)) {
              setGrid(existing.grid_snapshot); saveGridLocally(sId, uId, existing.grid_snapshot);
         } else if (!existing.grid_snapshot?.length) {
-             const g = localGrid || generateGrid(cardItems, false, true); if(!localGrid) setGrid(g); saveGridLocally(sId, uId, g);
-             await supabase.from('session_participants').update({ grid_snapshot: g }).eq('id', existing.id);
+             if(!localGrid) setGrid(newGrid); 
+             saveGridLocally(sId, uId, newGrid);
+             await supabase.from('session_participants').update({ grid_snapshot: newGrid }).eq('id', existing.id);
         }
         if (existing.marked_indices) {
             const nm = new Array(25).fill(false); existing.marked_indices.forEach(idx => nm[idx] = true);
@@ -164,7 +204,9 @@ export default function PlayBingo() {
         }
     } else {
         const { data: p } = await supabase.from('profiles').select('username').eq('id', uId).single();
-        const g = generateGrid(cardItems, true, true); setGrid(g); saveGridLocally(sId, uId, g);
+        const g = newGrid; 
+        setGrid(g); 
+        saveGridLocally(sId, uId, g);
         try { const { data: newP } = await supabase.from('session_participants').insert({ session_id: sId, user_id: uId, user_name: p?.username || 'Speler', marked_indices: [12], grid_snapshot: g }).select().single();
         if (newP) myParticipantIdRef.current = newP.id; fetchParticipants(sId); } catch (e) {}
     }
@@ -185,7 +227,9 @@ export default function PlayBingo() {
   };
 
   const handleShuffle = async () => {
-    const g = generateGrid(card?.items, true, true); setShowShuffleConfirm(false); setGrid(g);
+    // Check mode voor juiste shuffle (Classic of Custom)
+    const g = gameMode === 'classic' ? generateClassicGrid() : generateGrid(card?.items, true, true);
+    setShowShuffleConfirm(false); setGrid(g);
     if (myParticipantIdRef.current) { saveGridLocally(sessionId, currentUserIdRef.current, g); await supabase.from('session_participants').update({ marked_indices: [12], has_bingo: false, grid_snapshot: g }).eq('id', myParticipantIdRef.current); }
   };
 
@@ -231,10 +275,9 @@ export default function PlayBingo() {
             if(pl.new.current_draw!==undefined) setCurrentDraw(pl.new.current_draw); 
             if(pl.new.drawn_items) setDrawnItems(pl.new.drawn_items); 
             
-            // RESET LOGICA
             if (pl.new.drawn_items && pl.new.drawn_items.length === 0 && pl.new.status === 'active') {
                 setWinner(null);
-                setShowWinnerPopup(false); // Sluit popup bij iedereen bij reset
+                setShowWinnerPopup(false); 
                 handleShuffle(); 
             }
 
@@ -246,7 +289,9 @@ export default function PlayBingo() {
         .on('postgres_changes', { event: '*', schema: 'public', table: 'session_participants', filter: `session_id=eq.${sessionId}` }, (pl) => { 
             if(pl.eventType !== 'DELETE') { 
                 fetchParticipants(sessionId); 
-                if(pl.new.has_bingo && isHost && !winner && gameMode === 'hall') setVerificationClaim(pl.new); 
+                // Check voor Bingo Claim (Werkt voor zowel Hall als Classic)
+                if(pl.new.has_bingo && isHost && !winner && (gameMode === 'hall' || gameMode === 'classic')) setVerificationClaim(pl.new); 
+                
                 if(pl.new.id === myParticipantIdRef.current && pl.new.marked_indices) { 
                     const nm=new Array(25).fill(false); 
                     pl.new.marked_indices.forEach(i=>nm[i]=true); 
@@ -263,7 +308,6 @@ export default function PlayBingo() {
             setTimeout(()=>setIsFalseBingo(false),3000); 
         })
         .on('broadcast', { event: 'game_won' }, (pl) => { 
-            // Hier komt de naam binnen
             setWinner(pl.payload.winnerName); 
             setShowWinnerPopup(true); 
             confetti({ particleCount: 100, spread: 70 }); 
@@ -278,27 +322,22 @@ export default function PlayBingo() {
   return (
     <div className="min-h-screen bg-gray-50 pb-20 font-sans text-center sm:text-left relative overflow-x-hidden">
         
-        {/* WINNER OVERLAY - Z-INDEX 99999 (TOP PRIORITY) */}
+        {/* WINNER OVERLAY */}
         {winner && showWinnerPopup && (
             <div className="fixed inset-0 z-[99999] bg-black/95 flex items-center justify-center text-white text-center animate-in zoom-in p-4">
                 <div className="max-w-xl w-full relative">
-                    
-                    {/* SLUIT KNOP VOOR SPELERS */}
                     {!isHost && (
                         <button onClick={() => setShowWinnerPopup(false)} className="absolute top-0 right-0 p-2 bg-white/10 hover:bg-white/20 rounded-full transition-colors">
                             <X size={24} />
                         </button>
                     )}
-
                     <Crown size={100} className="mx-auto mb-6 text-yellow-400 animate-bounce drop-shadow-[0_0_15px_rgba(250,204,21,0.5)]"/>
                     <h1 className="text-5xl md:text-7xl font-black italic uppercase tracking-tighter mb-2 text-transparent bg-clip-text bg-gradient-to-br from-yellow-300 to-yellow-600">WINNAAR!</h1>
                     <p className="text-sm font-bold uppercase tracking-widest opacity-60 mb-6">De winnaar is bekend</p>
-                    
                     <div className="bg-white text-gray-900 rounded-[2rem] p-6 shadow-2xl transform rotate-2 mb-8">
                         <div className="text-sm font-black text-gray-400 uppercase tracking-widest mb-1">Naam</div>
                         <div className="text-3xl md:text-5xl font-black uppercase text-purple-600 break-words leading-tight">{winner}</div>
                     </div>
-
                     {isHost ? (
                         <button onClick={resetDraws} className="bg-white/20 hover:bg-white text-white hover:text-black border-2 border-white px-8 py-4 rounded-xl font-black uppercase transition-all">Nieuw Spel Starten</button>
                     ) : (
@@ -314,15 +353,19 @@ export default function PlayBingo() {
 
         {/* HEADER (Z-50) */}
         <div className="pt-8 px-6 pb-6 relative z-50">
-            <div className="max-w-6xl mx-auto relative group">
+            <div className="max-w-screen-2xl mx-auto relative group">
                 <div className="relative z-50 bg-gray-900 rounded-[2.5rem] px-6 py-4 flex flex-col md:flex-row justify-between items-center shadow-2xl gap-4 md:gap-0">
                     <div className="absolute top-0 left-1/2 -translate-x-1/2 w-64 h-64 bg-orange-500 rounded-full blur-[120px] opacity-20 pointer-events-none"></div>
                     <div className="relative z-10 flex items-center gap-4 w-full md:w-auto">
                         <button onClick={() => navigate('/dashboard')} className="p-2 bg-gray-800 text-gray-400 rounded-xl hover:text-white"><ChevronLeft size={24} /></button>
                         <div>
-                            <h2 className="text-xl md:text-2xl font-black italic uppercase text-white">{card?.title}</h2>
-                            <p className="text-gray-500 text-[10px] font-bold uppercase tracking-widest flex items-center gap-2">
+                            {/* AANGEPAST: SESSIE NAAM & KAART NAAM */}
+                            <h2 className="text-xl md:text-2xl font-black italic uppercase text-white">{session?.name || card?.title}</h2>
+                            {session?.name && <p className="text-gray-400 text-[10px] font-bold uppercase tracking-widest">Kaart: {card?.title}</p>}
+                            
+                            <p className="text-gray-500 text-[10px] font-bold uppercase tracking-widest flex items-center gap-2 mt-1">
                                 {gameMode === 'hall' && <span className="bg-purple-500 text-white px-2 py-0.5 rounded text-[8px]">ZAAL MODUS</span>}
+                                {gameMode === 'classic' && <span className="bg-blue-500 text-white px-2 py-0.5 rounded text-[8px]">CLASSIC</span>}
                             </p>
                         </div>
                     </div>
@@ -338,10 +381,12 @@ export default function PlayBingo() {
                             </>
                         )}
                         <button onClick={() => { navigator.clipboard.writeText(window.location.href); setCopied(true); setTimeout(() => setCopied(false), 2000); }} className="p-2.5 bg-gray-800 text-gray-400 rounded-xl hover:text-white transition-colors">{copied ? <Check size={20} className="text-green-500" /> : <Share2 size={20} />}</button>
-                        {isHost && <button onClick={()=>navigate(`/setup/${card.id}/${sessionId}`)} className="p-2.5 bg-gray-800 text-gray-400 rounded-xl hover:text-white"><Settings size={20}/></button>}
+                        {/* Alleen settings voor niet-classic hosts (want classic heeft geen edit pagina) */}
+                        {isHost && gameMode !== 'classic' && <button onClick={()=>navigate(`/setup/${card.id}/${sessionId}`)} className="p-2.5 bg-gray-800 text-gray-400 rounded-xl hover:text-white"><Settings size={20}/></button>}
                     </div>
                 </div>
 
+                {/* ALLEEN FLAG TONEN BIJ NORMALE MODES (NIET CLASSIC/HALL) */}
                 <div className={`absolute top-[85%] left-0 right-0 z-10 flex justify-center pointer-events-none transition-all duration-700 ease-[cubic-bezier(0.34,1.56,0.64,1)] ${showFlag ? 'translate-y-0 opacity-100' : '-translate-y-[100%] opacity-0'}`}>
                     <div className={`px-12 pt-8 pb-4 rounded-b-3xl shadow-2xl border-2 border-t-0 flex items-center justify-center gap-4 ${soloBranding.color || 'bg-orange-500 text-white border-orange-600'}`}>
                         <div className="animate-bounce">{soloBranding.icon}</div>
@@ -352,8 +397,16 @@ export default function PlayBingo() {
             </div>
         </div>
 
-        <div className="max-w-7xl mx-auto px-4 mt-32">
-            {gameMode === 'hall' && isHost ? (
+        {/* CONTAINER VOOR DE GAME CONTENT: AANGEPAST VOOR BETER RUIMTEGEBRUIK */}
+        <div className="max-w-screen-2xl mx-auto px-6 mt-12 pb-12">
+            {isHost && gameMode === 'classic' ? (
+                <ClassicHostView 
+                    session={session} 
+                    supabase={supabase}
+                    verificationClaim={verificationClaim} 
+                    setVerificationClaim={setVerificationClaim}
+                />
+            ) : isHost && gameMode === 'hall' ? (
                 <HallHostView 
                     currentDraw={currentDraw} drawnItems={drawnItems} participants={displayParticipants} verificationClaim={verificationClaim}
                     setVerificationClaim={setVerificationClaim} handleHostDraw={handleHostDraw} resetDraws={resetDraws} session={session} sessionId={sessionId} supabase={supabase}

@@ -147,6 +147,7 @@ export default function Dashboard() {
   };
 
   const fetchActiveSessions = async (userId) => {
+    // Selecteer ook de 'name' kolom
     const { data } = await supabase.from('bingo_sessions').select('*, bingo_cards(title)').eq('host_id', userId).neq('status', 'finished').eq('game_mode', 'hall').order('created_at', { ascending: false });
     if (data) setActiveSessions(data);
   };
@@ -154,19 +155,43 @@ export default function Dashboard() {
   const fetchJoinedSessions = async (userId) => {
     try {
       const { data: hostedGames } = await supabase.from('bingo_sessions').select('*, bingo_cards(title)').eq('host_id', userId).neq('status', 'finished');
-      const { data: participantGames } = await supabase.from('session_participants').select(`last_active:updated_at, bingo_sessions!inner (id, join_code, status, created_at, updated_at, host_id, game_mode, bingo_cards (title))`).eq('user_id', userId).neq('bingo_sessions.status', 'finished');
+      const { data: participantGames } = await supabase.from('session_participants').select(`last_active:updated_at, bingo_sessions!inner (id, join_code, status, created_at, updated_at, host_id, game_mode, name, bingo_cards (title))`).eq('user_id', userId).neq('bingo_sessions.status', 'finished');
 
       const gamesMap = new Map();
+      
+      // Verwerk Hosted Games
       if (hostedGames) {
         hostedGames.forEach(game => {
-          gamesMap.set(game.id, { id: game.id, join_code: game.join_code, title: game.bingo_cards?.title || 'Naamloze Sessie', host_id: game.host_id, started_at: game.created_at, is_host: true, game_mode: game.game_mode, last_active: game.updated_at || game.created_at });
+          gamesMap.set(game.id, { 
+              id: game.id, 
+              join_code: game.join_code, 
+              sessionName: game.name || 'Naamloze Sessie', // GEBRUIK SESSIE NAAM
+              cardTitle: game.bingo_cards?.title || 'Onbekende Kaart', // ORIGINELE KAART NAAM
+              host_id: game.host_id, 
+              started_at: game.created_at, 
+              is_host: true, 
+              game_mode: game.game_mode, 
+              last_active: game.updated_at || game.created_at 
+          });
         });
       }
+
+      // Verwerk Joined Games
       if (participantGames) {
         participantGames.forEach(p => {
           const s = p.bingo_sessions;
           if (!gamesMap.has(s.id)) {
-            gamesMap.set(s.id, { id: s.id, join_code: s.join_code, title: s.bingo_cards?.title || 'Naamloze Sessie', host_id: s.host_id, started_at: s.created_at, is_host: s.host_id === userId, game_mode: s.game_mode, last_active: s.updated_at || s.created_at });
+            gamesMap.set(s.id, { 
+                id: s.id, 
+                join_code: s.join_code, 
+                sessionName: s.name || 'Naamloze Sessie', // GEBRUIK SESSIE NAAM
+                cardTitle: s.bingo_cards?.title || 'Onbekende Kaart', // ORIGINELE KAART NAAM
+                host_id: s.host_id, 
+                started_at: s.created_at, 
+                is_host: s.host_id === userId, 
+                game_mode: s.game_mode, 
+                last_active: s.updated_at || s.created_at 
+            });
           }
         });
       }
@@ -181,7 +206,6 @@ export default function Dashboard() {
 
   // --- ACTIONS ---
   
-  // NIEUW: UPDATE AVATAR
   const updateAvatar = async (newIcon, newColor) => {
     try {
         const { error } = await supabase
@@ -418,16 +442,19 @@ export default function Dashboard() {
                             {session.is_host ? <Crown size={32} fill="currentColor"/> : <User size={32}/>}
                           </div>
                           <div>
-                            <div className="flex flex-wrap items-center gap-3 mb-1">
-                              <span className="text-2xl font-black text-gray-900 uppercase italic tracking-tight">{session.title}</span>
-                              <div className="flex gap-2">
+                            {/* AANGEPAST: SESSIE NAAM ALS TITEL, KAART NAAM ALS SUBTITEL */}
+                            <div className="mb-2">
+                              <span className="block text-2xl font-black text-gray-900 uppercase italic tracking-tight">{session.sessionName}</span>
+                              <span className="block text-xs font-bold text-gray-400 uppercase tracking-widest">Kaart: {session.cardTitle}</span>
+                            </div>
+                            
+                            <div className="flex gap-2 mb-2">
                                 {session.is_host && <span className="bg-orange-500 text-white text-[10px] px-2 py-0.5 rounded-md font-black uppercase">Host</span>}
                                 <span className={`text-[10px] px-2 py-0.5 rounded-md font-black uppercase ${session.game_mode === 'hall' ? 'bg-purple-100 text-purple-600' : 'bg-gray-100 text-gray-500'}`}>{session.game_mode === 'hall' ? 'Zaal' : 'Solo'}</span>
-                              </div>
                             </div>
+
                             <div className="flex flex-wrap items-center gap-4 text-xs font-bold text-gray-400 uppercase tracking-widest">
                               <span className="flex items-center gap-1"><Gamepad2 size={14}/> Code: <span className="text-gray-900">{session.join_code}</span></span>
-                              <span className="flex items-center gap-1"><Clock size={14}/> {new Date(session.started_at).toLocaleDateString()}</span>
                               <SessionTimer lastActive={session.last_active} />
                             </div>
                           </div>
@@ -445,16 +472,17 @@ export default function Dashboard() {
               </div>
             )}
 
+            {/* REST VAN DE TABS (FAVORITES, FRIENDS, ACCOUNT) - ONGEWIJZIGD */}
             {activeTab === 'favorites' && (
               <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-                 {favoriteCards.length === 0 ? (
+                  {favoriteCards.length === 0 ? (
                     <div className="text-center py-20 bg-white rounded-[2.5rem] border border-gray-100 shadow-sm">
                         <div className="bg-pink-50 p-6 rounded-full inline-block mb-6"><Heart className="text-pink-400" size={48} /></div>
                         <h3 className="text-2xl font-black text-gray-900 uppercase italic mb-2">Nog geen favorieten</h3>
                         <p className="text-gray-400 font-bold text-sm max-w-md mx-auto mb-8">Klik op het hartje bij een kaart om hem hier op te slaan!</p>
                         <Link to="/community" className="bg-gray-900 text-white px-8 py-4 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-orange-500 transition-colors shadow-lg">Ontdek de Community</Link>
                     </div>
-                 ) : (
+                  ) : (
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                         {favoriteCards.map((card) => (
                         <div key={card.id} className="group relative bg-white rounded-[2rem] border-2 border-transparent hover:border-pink-200 shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden flex flex-col">
@@ -474,7 +502,7 @@ export default function Dashboard() {
                         </div>
                         ))}
                     </div>
-                 )}
+                  )}
               </div>
             )}
 
@@ -530,7 +558,6 @@ export default function Dashboard() {
                   <div className="bg-gray-900 p-8 text-white relative overflow-hidden">
                     <div className="absolute top-0 right-0 w-64 h-64 bg-orange-500 rounded-full blur-[80px] opacity-20 pointer-events-none"></div>
                     <div className="relative z-10 flex items-center gap-6">
-                      {/* DYNAMISCHE AVATAR PREVIEW IN HEADER */}
                       <AvatarPreview iconName={userData.avatarIcon} bgColor={userData.avatarColor} size={96} />
                       <div>
                         <h3 className="text-3xl font-black italic uppercase tracking-wide">{userData.username}</h3>
@@ -540,8 +567,6 @@ export default function Dashboard() {
                   </div>
 
                   <div className="p-8 space-y-10">
-                    
-                    {/* NIEUW: AVATAR BUILDER SECTIE */}
                     <div className="bg-gray-50 p-6 rounded-[2.5rem] border border-gray-100 flex flex-col md:flex-row items-center gap-8">
                         <div className="flex flex-col items-center gap-3">
                             <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Preview</label>
@@ -631,7 +656,10 @@ export default function Dashboard() {
                                 <p className="text-xs font-bold text-orange-400 uppercase tracking-wider">Code: {session.join_code}</p>
                                 <button onClick={() => confirmStopSession(session.id)} className="text-gray-400 hover:text-red-500 transition-colors p-1 -mt-1 -mr-1"><X size={16} /></button>
                             </div>
-                            <h4 className="font-bold text-sm mb-3 truncate">{session.bingo_cards?.title || 'Naamloze Sessie'}</h4>
+                            {/* OOK HIER: SESSIE NAAM */}
+                            <h4 className="font-bold text-sm mb-1 truncate">{session.name || 'Naamloze Sessie'}</h4>
+                            <p className="text-[10px] text-gray-400 mb-3 truncate">Kaart: {session.bingo_cards?.title}</p>
+                            
                             <Link to={`/play-session/${session.id}`} className="block w-full bg-orange-500 text-center py-2 rounded-lg text-[10px] font-black uppercase tracking-widest hover:bg-orange-600 transition-colors">Hervatten</Link>
                         </div>
                         ))}
@@ -649,16 +677,16 @@ export default function Dashboard() {
 
             {cards.length > 0 && (
               <div className="bg-white rounded-[2rem] p-6 border border-gray-100 shadow-sm">
-                 <div className="flex items-center gap-3 mb-6">
+                  <div className="flex items-center gap-3 mb-6">
                     <div className="bg-orange-100 p-2 rounded-lg text-orange-600"><BarChart3 size={20} /></div>
                     <h3 className="text-lg font-black text-gray-900 italic uppercase">Jouw Impact</h3>
-                 </div>
-                 <div className="grid grid-cols-2 gap-4">
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
                     <div className="bg-gray-50 p-4 rounded-2xl text-center"><p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1 flex justify-center gap-1"><Eye size={12}/> Views</p><p className="text-2xl font-black text-gray-900">{cards.reduce((sum, card) => sum + (card.play_count || 0), 0)}</p></div>
                     <div className="bg-gray-50 p-4 rounded-2xl text-center"><p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1 flex justify-center gap-1"><Gamepad2 size={12}/> Hosted</p><p className="text-2xl font-black text-orange-500">{sessionCount}</p></div>
                     <div className="bg-gray-50 p-4 rounded-2xl text-center"><p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1 flex justify-center gap-1"><LayoutGrid size={12}/> Cards</p><p className="text-2xl font-black text-gray-900">{cards.length}</p></div>
                     <div className="bg-gray-50 p-4 rounded-2xl text-center"><p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1 flex justify-center gap-1"><Trophy size={12}/> Top</p>{cards.length > 0 ? <p className="text-xs font-black text-gray-900 line-clamp-1">{cards.reduce((prev, current) => (prev.play_count > current.play_count) ? prev : current).title}</p> : <p>-</p>}</div>
-                 </div>
+                  </div>
               </div>
             )}
           </div>
