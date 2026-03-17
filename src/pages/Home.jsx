@@ -250,20 +250,20 @@ export default function Home() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <div className="group p-6 bg-white rounded-[2rem] border-2 border-gray-100 hover:border-orange-200 shadow-sm transition-all duration-300">
             <div className="w-12 h-12 bg-orange-50 text-orange-500 rounded-xl flex items-center justify-center mb-4 group-hover:rotate-6 transition-transform"><Sparkles size={24} /></div>
-            <h3 className="text-lg font-black mb-2 italic uppercase">100% Gratis</h3>
-            <p className="text-gray-400 text-xs font-bold leading-relaxed">Geen verborgen kosten. Maak onbeperkt kaarten voor al je feestjes.</p>
+            <h3 id="finch-mijndiv" className="text-lg font-black mb-2 italic uppercase">100% Gratis</h3>
+            <p id="finch-mijndiv" className="text-gray-400 text-xs font-bold leading-relaxed">Geen verborgen kosten. Maak onbeperkt kaarten voor al je feestjes.</p>
           </div>
 
           <div className="group p-6 bg-white rounded-[2rem] border-2 border-gray-100 hover:border-orange-200 shadow-sm transition-all duration-300">
             <div className="w-12 h-12 bg-blue-50 text-blue-500 rounded-xl flex items-center justify-center mb-4 group-hover:-rotate-6 transition-transform"><Grid3X3 size={24} /></div>
-            <h3 className="text-lg font-black mb-2 italic uppercase">Slimme Generator</h3>
-            <p className="text-gray-400 text-xs font-bold leading-relaxed">Vul een lijst met woorden en wij genereren voor elke speler een unieke kaart.</p>
+            <h3 id="finch-mijndiv" className="text-lg font-black mb-2 italic uppercase">Slimme Generator</h3>
+            <p id="finch-mijndiv" className="text-gray-400 text-xs font-bold leading-relaxed">Vul een lijst met woorden en wij genereren voor elke speler een unieke kaart.</p>
           </div>
 
           <div className="group p-6 bg-white rounded-[2rem] border-2 border-gray-100 hover:border-orange-200 shadow-sm transition-all duration-300">
             <div className="w-12 h-12 bg-green-50 text-green-500 rounded-xl flex items-center justify-center mb-4 group-hover:rotate-6 transition-transform"><ShieldCheck size={24} /></div>
-            <h3 className="text-lg font-black mb-2 italic uppercase">Geen Account Nodig</h3>
-            <p className="text-gray-400 text-xs font-bold leading-relaxed">Spelers hoeven zich niet te registreren. Deel gewoon de code.</p>
+            <h3 id="finch-mijndiv" className="text-lg font-black mb-2 italic uppercase">Geen Account Nodig</h3>
+            <p id="finch-mijndiv" className="text-gray-400 text-xs font-bold leading-relaxed">Spelers hoeven zich niet te registreren. Deel gewoon de code.</p>
           </div>
         </div>
       </div>
