@@ -27,7 +27,7 @@ import ScrollToTop from './components/ScrollToTop';
 const NavigateToPortal = () => {
   useEffect(() => {
     // VERVANG DEZE URL door de echte URL van je centrale finch-frontend op Vercel
-    const PORTAL_URL = "finch-frontend-bice.vercel.app";
+    const PORTAL_URL = "https://finch-frontend-bice.vercel.app/login";
     window.location.href = PORTAL_URL;
   }, []);
 
