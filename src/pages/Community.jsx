@@ -264,59 +264,29 @@ export default function Community() {
               )}
             </section>
 
-            {/* --- GAME MODES (PERFECTE SPLIT - SCHUINE KLEUREN - CLICKABLE FIX) --- */}
+            {/* --- GAME MODES (CLASSIC BINGO FULL WIDTH) --- */}
             <section className="max-w-6xl mx-auto px-6">
-              <div className="relative w-full h-[450px] md:h-[350px] rounded-[3rem] overflow-hidden shadow-2xl flex flex-col md:flex-row group bg-black">
-                
-                {/* LINKE HELFT (ARENA - ROOD) */}
-                <div 
-                    onClick={() => navigate('/ranked-lobby')}
-                    className="absolute inset-y-0 left-0 w-[55%] hover:w-[60%] bg-red-600 transition-all duration-500 ease-in-out cursor-pointer flex flex-col justify-center items-start p-8 md:p-12 overflow-hidden z-20 hover:z-30 hover:shadow-[10px_0_30px_rgba(0,0,0,0.5)] group/arena"
-                    style={{ clipPath: 'polygon(0 0, 100% 0, 85% 100%, 0% 100%)' }}
-                >
-                    <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-20"></div>
-                    <div className="absolute top-[-50px] right-[-50px] w-64 h-64 bg-black/30 rounded-full blur-[60px]"></div>
-                    
-                    <div className="relative z-10 flex flex-col items-start text-left max-w-[80%]">
-                        <div className="flex items-center gap-2 mb-4 text-red-200 bg-red-900/30 px-3 py-1 rounded-full border border-red-500/30">
-                            <Swords size={16} />
-                            <span className="font-black uppercase tracking-[0.2em] text-[10px]">Ranked 10x10</span>
-                        </div>
-                        <h2 className="text-4xl md:text-5xl font-black text-white italic uppercase tracking-tighter leading-none mb-6">
-                            Arena <span className="text-red-950 block">Conquest</span>
-                        </h2>
-                        <button className="bg-white text-red-600 px-8 py-3 rounded-full font-black uppercase text-xs tracking-widest group-hover/arena:bg-red-50 group-hover/arena:scale-105 transition-all shadow-lg flex items-center gap-2">
-                            Enter Arena <ArrowRight size={14} />
-                        </button>
-                    </div>
-                </div>
+              <div 
+                  onClick={() => navigate('/classic-setup')}
+                  className="relative w-full h-[300px] md:h-[350px] rounded-[3rem] overflow-hidden shadow-2xl cursor-pointer group bg-blue-600 hover:shadow-[0_10px_40px_rgba(37,99,235,0.4)] transition-all duration-500"
+              >
+                  {/* Achtergrond patronen */}
+                  <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-20"></div>
+                  <div className="absolute top-[-50px] right-[-50px] w-64 h-64 bg-white/20 rounded-full blur-[60px] group-hover:scale-150 transition-transform duration-700"></div>
+                  <div className="absolute bottom-[-50px] left-[-50px] w-64 h-64 bg-black/20 rounded-full blur-[60px]"></div>
 
-                {/* RECHTER HELFT (TRADITIONEEL - BLAUW) */}
-                <div 
-                    onClick={() => navigate('/classic-setup')}
-                    className="absolute inset-y-0 right-0 w-[55%] hover:w-[60%] bg-blue-600 transition-all duration-500 ease-in-out cursor-pointer flex flex-col justify-center items-end p-8 md:p-12 overflow-hidden z-20 hover:z-30 hover:shadow-[-10px_0_30px_rgba(0,0,0,0.5)] group/classic"
-                    style={{ clipPath: 'polygon(15% 0, 100% 0, 100% 100%, 0% 100%)' }}
-                >
-                    <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-20"></div>
-                    <div className="absolute bottom-[-50px] left-[-50px] w-64 h-64 bg-white/10 rounded-full blur-[60px]"></div>
-
-                    <div className="relative z-10 flex flex-col items-end text-right pr-[5%]">
-                        <div className="flex items-center gap-2 mb-4 text-blue-200 bg-blue-900/30 px-3 py-1 rounded-full border border-blue-500/30">
-                            <span className="font-black uppercase tracking-[0.2em] text-[10px]">Classic 1-75</span>
-                            <Dices size={16} />
-                        </div>
-                        <h2 className="text-4xl md:text-5xl font-black text-white italic uppercase tracking-tighter leading-none mb-6">
-                            Classic <span className="text-blue-950 block">Bingo</span>
-                        </h2>
-                        <button className="bg-white text-blue-600 px-8 py-3 rounded-full font-black uppercase text-xs tracking-widest group-hover/classic:bg-blue-50 group-hover/classic:scale-105 transition-all shadow-lg flex items-center gap-2 flex-row-reverse">
-                            Speel Classic <ArrowRight size={14} />
-                        </button>
-                    </div>
-                </div>
-
-                {/* ZWARTE LIJN IN HET MIDDEN (Visuele opvulling) */}
-                <div className="absolute inset-0 w-full h-full bg-black z-0 pointer-events-none"></div>
-
+                  <div className="relative z-10 h-full flex flex-col items-center justify-center text-center p-8">
+                      <div className="flex items-center gap-2 mb-4 text-blue-200 bg-blue-900/40 px-4 py-2 rounded-full border border-blue-500/30 shadow-inner">
+                          <span className="font-black uppercase tracking-[0.2em] text-[10px] md:text-xs">Classic 1-75</span>
+                          <Dices size={16} />
+                      </div>
+                      <h2 className="text-4xl md:text-6xl font-black text-white italic uppercase tracking-tighter leading-none mb-8">
+                          Classic <span className="text-blue-950">Bingo</span>
+                      </h2>
+                      <button className="bg-white text-blue-600 px-8 py-4 rounded-full font-black uppercase text-sm tracking-widest group-hover:bg-blue-50 group-hover:scale-105 transition-all shadow-xl flex items-center gap-3">
+                          Speel Classic <ArrowRight size={18} />
+                      </button>
+                  </div>
               </div>
             </section>
 

@@ -10,9 +10,9 @@ import PlayBingo from './pages/PlayBingo';
 import Community from './pages/Community';
 import Join from './pages/Join';
 import SetupGame from './pages/SetupGame';
-import RankedArena from './pages/RankedArena';
 import ClassicSetup from './pages/ClassicSetup'; // <--- NIEUWE IMPORT
 import NotFound from './pages/NotFound';
+import Premium from './pages/Premium';
 
 // Components
 import Navbar from './components/Navbar';
@@ -55,14 +55,12 @@ function App() {
 
             <Route path="/play/:id" element={<PlayBingo />} />
             <Route path="/play-session/:sessionId" element={<PlayBingo />} />
-            
-            {/* RANKED ARENA ROUTES: */}
-            <Route path="/ranked-arena" element={<RankedArena />} />
-            <Route path="/ranked-lobby" element={<RankedArena />} /> {/* Alias voor consistentie */}
-
+          
             <Route path="/community" element={<Community />} />
             <Route path="/join" element={<Join />} />
             <Route path="*" element={<NotFound />} />
+
+            <Route path="/premium" element={<Premium />} />
           </Routes>
         </PageLayout>
         <Footer />

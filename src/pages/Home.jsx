@@ -6,27 +6,53 @@ import { Play, Plus, Users, ShieldCheck, Sparkles, ChevronRight, Star, Grid3X3, 
 export default function Home() {
   const navigate = useNavigate();
   
-  // --- STATE ---
+  // --- CMS STATE (Nieuw) ---
+  const [cmsContent, setCmsContent] = useState({
+    titel: "BINGO, MAAR DAN MODERN.",
+    intro: "Maak in seconden je eigen kaarten, deel ze met vrienden of speel direct met de community. Geen papier, geen gedoe.",
+    afbeelding: null
+  });
+
+  // --- OVERIGE STATE ---
   const [playerCount, setPlayerCount] = useState(null);
   const [demoTitle, setDemoTitle] = useState("Vrijmibo");
-
-  // --- STATE VOOR BINGO ANIMATIE ---
   const [demoMarked, setDemoMarked] = useState(Array(9).fill(false));
   const [showBingo, setShowBingo] = useState(false);
 
-  // 1. Ophalen stats & titel
+  // --- 1. CMS CONTENT OPHALEN (Nieuw) ---
   useEffect(() => {
-    const titles = [
-      "Vrijmibo", "Kerst Bingo", "Team Meeting", "Baby Shower", 
-      "Roadtrip", "Marketing", "Camping", "Familiedag"
-    ];
+    const fetchCMS = async () => {
+      try {
+        // VERVANG DIT door jouw echte Vercel URL
+        const API_URL = "https://jouw-project-naam.vercel.app"; 
+        const DOMEIN = "pingobingo.io";
+        const SLUG = "home";
+
+        const res = await fetch(`${API_URL}/api/public/${DOMEIN}/${SLUG}`);
+        const data = await res.json();
+
+        if (data.content) {
+          setCmsContent({
+            titel: data.content.titelLive || "BINGO, MAAR DAN MODERN.",
+            intro: data.content.introductieLive || "Maak in seconden je eigen kaarten...",
+            afbeelding: data.content.afbeeldingUrlLive
+          });
+        }
+      } catch (err) {
+        console.error("Finch CMS kon niet laden, fallback naar standaard tekst.");
+      }
+    };
+    fetchCMS();
+  }, []);
+
+  // --- 2. STATS & TITEL LOGICA ---
+  useEffect(() => {
+    const titles = ["Vrijmibo", "Kerst Bingo", "Team Meeting", "Baby Shower", "Roadtrip", "Marketing", "Camping", "Familiedag"];
     setDemoTitle(titles[Math.floor(Math.random() * titles.length)]);
 
     const fetchStats = async () => {
       try {
-        // Filter: Alleen spelers die in het laatste uur actief waren
         const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
-        
         const { count, error } = await supabase
           .from('session_participants')
           .select('*', { count: 'exact', head: true })
@@ -41,33 +67,20 @@ export default function Home() {
     fetchStats();
   }, []);
 
-  // 2. NIEUWE FUNCTIE: Check login voor aanmaken
+  // --- 3. LOGIN CHECK ---
   const handleCreateClick = async () => {
-    // Check of er een gebruiker is
     const { data: { user } } = await supabase.auth.getUser();
-
-    if (user) {
-      // Wel ingelogd? Ga naar de maker
-      navigate('/create');
-    } else {
-      // Niet ingelogd? Ga naar login
-      navigate('/login');
-    }
+    user ? navigate('/create') : navigate('/login');
   };
 
-  // 3. DE BINGO ANIMATIE LOOP
+  // --- 4. BINGO ANIMATIE LOOP ---
   useEffect(() => {
     let timeouts = [];
-    const winPatterns = [
-      [0, 1, 2], [3, 4, 5], [6, 7, 8], // Horizontaal
-      [0, 3, 6], [1, 4, 7], [2, 5, 8], // Verticaal
-      [0, 4, 8], [2, 4, 6]             // Diagonaal
-    ];
+    const winPatterns = [[0, 1, 2], [3, 4, 5], [6, 7, 8], [0, 3, 6], [1, 4, 7], [2, 5, 8], [0, 4, 8], [2, 4, 6]];
 
     const runSimulation = () => {
       setShowBingo(false);
       setDemoMarked([false, false, false, false, true, false, false, false, false]);
-
       const targetPattern = winPatterns[Math.floor(Math.random() * winPatterns.length)];
       const stepsToWin = targetPattern.filter(idx => idx !== 4);
 
@@ -82,18 +95,11 @@ export default function Home() {
       });
 
       const bingoTime = (stepsToWin.length * 1000) + 500;
-      
-      timeouts.push(setTimeout(() => {
-        setShowBingo(true);
-      }, bingoTime));
-
-      timeouts.push(setTimeout(() => {
-        runSimulation();
-      }, bingoTime + 4000));
+      timeouts.push(setTimeout(() => setShowBingo(true), bingoTime));
+      timeouts.push(setTimeout(() => runSimulation(), bingoTime + 4000));
     };
 
     runSimulation();
-
     return () => timeouts.forEach(clearTimeout);
   }, []);
 
@@ -102,48 +108,41 @@ export default function Home() {
       
       {/* --- HERO SECTIE --- */}
       <div className="relative bg-gray-900 rounded-b-[2.5rem] overflow-hidden pt-12 pb-16 md:pt-16 md:pb-20 shadow-2xl">
-        
         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full max-w-4xl h-full bg-orange-500/10 blur-[100px] rounded-full pointer-events-none"></div>
-        <div className="absolute top-10 right-0 w-48 h-48 bg-blue-500/10 blur-[80px] rounded-full pointer-events-none"></div>
 
         <div className="max-w-7xl mx-auto px-6 relative z-10 grid lg:grid-cols-2 gap-8 lg:gap-12 items-center">
           
-          {/* Linker Kant */}
           <div className="text-center lg:text-left">
-            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-gray-700 bg-gray-800/50 text-orange-400 font-black text-[10px] uppercase tracking-widest mb-6 animate-in slide-in-from-bottom-4 backdrop-blur-md">
+            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-gray-700 bg-gray-800/50 text-orange-400 font-black text-[10px] uppercase tracking-widest mb-6 backdrop-blur-md">
               <Sparkles size={12} />
-              <span>Nu live: Community Hub</span>
+              <span>Nu live: Finch Headless CMS</span>
             </div>
             
-            <h1 className="text-5xl md:text-7xl font-black tracking-tighter italic text-white mb-4 leading-none animate-in slide-in-from-bottom-6">
-              BINGO, MAAR DAN <br/>
-              <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-400 to-red-500">MODERN.</span>
+            {/* DYNAMISCHE TITEL UIT CMS */}
+            <h1 className="text-5xl md:text-7xl font-black tracking-tighter italic text-white mb-4 leading-none uppercase">
+               {cmsContent.titel.includes("MODERN") ? (
+                 <>BINGO, MAAR DAN <br/><span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-400 to-red-500">MODERN.</span></>
+               ) : cmsContent.titel}
             </h1>
             
-            <p className="text-base md:text-lg text-gray-400 font-bold leading-relaxed mb-8 max-w-lg mx-auto lg:mx-0 animate-in slide-in-from-bottom-8">
-              Maak in seconden je eigen kaarten, deel ze met vrienden of speel direct met de community. 
-              Geen papier, geen gedoe.
+            {/* DYNAMISCHE INTRO UIT CMS */}
+            <p className="text-base md:text-lg text-gray-400 font-bold leading-relaxed mb-8 max-w-lg mx-auto lg:mx-0">
+              {cmsContent.intro}
             </p>
 
-            <div className="flex flex-col sm:flex-row gap-3 justify-center lg:justify-start animate-in slide-in-from-bottom-10">
-              <button 
-                onClick={handleCreateClick} // <--- HIER DE NIEUWE CHECK
-                className="group bg-orange-500 text-white px-6 py-3.5 rounded-xl font-black text-xs uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-orange-600 transition shadow-lg shadow-orange-500/20 active:scale-95"
-              >
+            <div className="flex flex-col sm:flex-row gap-3 justify-center lg:justify-start">
+              <button onClick={handleCreateClick} className="group bg-orange-500 text-white px-6 py-3.5 rounded-xl font-black text-xs uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-orange-600 transition shadow-lg shadow-orange-500/20 active:scale-95">
                 <Plus size={18} /> Maak Bingo
                 <ChevronRight size={14} className="group-hover:translate-x-1 transition-transform" />
               </button>
               
-              <button 
-                onClick={() => navigate('/community')}
-                className="bg-gray-800 text-white px-6 py-3.5 rounded-xl font-black text-xs uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-gray-700 transition border border-gray-700 active:scale-95"
-              >
+              <button onClick={() => navigate('/community')} className="bg-gray-800 text-white px-6 py-3.5 rounded-xl font-black text-xs uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-gray-700 transition border border-gray-700 active:scale-95">
                 <Users size={18} className="text-gray-400" /> Community
               </button>
             </div>
           </div>
 
-          {/* Rechter Kant: GEANIMEERDE KAART */}
+          {/* RECHTER KANT: ANIMATIE */}
           <div className="relative hidden lg:block perspective-1000">
             <div className="relative w-80 h-[400px] bg-white rounded-[2rem] p-5 shadow-2xl rotate-6 hover:rotate-3 transition-transform duration-500 mx-auto border-4 border-gray-100 group">
               
@@ -155,27 +154,18 @@ export default function Home() {
               </div>
               
               <div className="grid grid-cols-3 gap-2 h-[280px] relative">
-                 
-                 {/* BINGO POPUP */}
                  <div className={`absolute inset-0 z-20 flex items-center justify-center transition-all duration-300 ${showBingo ? 'opacity-100 scale-100' : 'opacity-0 scale-50 pointer-events-none'}`}>
                     <div className="bg-gradient-to-r from-orange-500 to-red-600 text-white px-6 py-4 rounded-2xl shadow-2xl transform rotate-[-10deg] border-4 border-white flex items-center gap-3 animate-in zoom-in duration-300">
                        <Trophy size={32} className="text-yellow-300 fill-yellow-300 animate-pulse" />
-                       <span className="text-4xl font-black italic tracking-tighter shadow-sm">BINGO!</span>
+                       <span className="text-4xl font-black italic tracking-tighter">BINGO!</span>
                     </div>
                  </div>
 
-                 {/* DE VAKJES */}
                  {demoMarked.map((isMarked, i) => (
-                   <div 
-                     key={i} 
-                     className={`rounded-xl flex items-center justify-center p-2 text-center border-2 transition-all duration-500 
-                       ${i === 4 
-                         ? 'bg-orange-500 border-orange-500 text-white scale-95 shadow-inner' // Center
-                         : isMarked 
-                           ? 'bg-orange-400 border-orange-400 text-white scale-95 shadow-sm' // Gemarkeerd
-                           : 'bg-gray-50 border-gray-100 text-gray-400' // Leeg
-                       }`}
-                   >
+                   <div key={i} className={`rounded-xl flex items-center justify-center p-2 text-center border-2 transition-all duration-500 
+                       ${i === 4 ? 'bg-orange-500 border-orange-500 text-white scale-95 shadow-inner' 
+                       : isMarked ? 'bg-orange-400 border-orange-400 text-white scale-95 shadow-sm' 
+                       : 'bg-gray-50 border-gray-100 text-gray-400'}`}>
                       {i === 4 ? <Star size={20} fill="currentColor" /> : (isMarked ? <div className="w-3 h-3 bg-white rounded-full shadow-sm animate-in zoom-in" /> : <div className="w-6 h-1.5 bg-gray-200 rounded-full"></div>)}
                    </div>
                  ))}
@@ -204,34 +194,22 @@ export default function Home() {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="group p-6 bg-white rounded-[2rem] border-2 border-gray-100 hover:border-orange-200 shadow-sm hover:shadow-xl transition-all duration-300">
-            <div className="w-12 h-12 bg-orange-50 text-orange-500 rounded-xl flex items-center justify-center mb-4 group-hover:scale-110 group-hover:rotate-6 transition-transform">
-              <Sparkles size={24} />
-            </div>
+          <div className="group p-6 bg-white rounded-[2rem] border-2 border-gray-100 hover:border-orange-200 shadow-sm transition-all duration-300">
+            <div className="w-12 h-12 bg-orange-50 text-orange-500 rounded-xl flex items-center justify-center mb-4 group-hover:rotate-6 transition-transform"><Sparkles size={24} /></div>
             <h3 className="text-lg font-black mb-2 italic uppercase">100% Gratis</h3>
-            <p className="text-gray-400 text-xs font-bold leading-relaxed">
-              Geen verborgen kosten. Maak onbeperkt kaarten voor al je feestjes, bruiloften of vergaderingen.
-            </p>
+            <p className="text-gray-400 text-xs font-bold leading-relaxed">Geen verborgen kosten. Maak onbeperkt kaarten voor al je feestjes.</p>
           </div>
 
-          <div className="group p-6 bg-white rounded-[2rem] border-2 border-gray-100 hover:border-orange-200 shadow-sm hover:shadow-xl transition-all duration-300">
-            <div className="w-12 h-12 bg-blue-50 text-blue-500 rounded-xl flex items-center justify-center mb-4 group-hover:scale-110 group-hover:-rotate-6 transition-transform">
-              <Grid3X3 size={24} />
-            </div>
+          <div className="group p-6 bg-white rounded-[2rem] border-2 border-gray-100 hover:border-orange-200 shadow-sm transition-all duration-300">
+            <div className="w-12 h-12 bg-blue-50 text-blue-500 rounded-xl flex items-center justify-center mb-4 group-hover:-rotate-6 transition-transform"><Grid3X3 size={24} /></div>
             <h3 className="text-lg font-black mb-2 italic uppercase">Slimme Generator</h3>
-            <p className="text-gray-400 text-xs font-bold leading-relaxed">
-              Vul een lijst met woorden en wij genereren voor elke speler een unieke, gehusselde kaart.
-            </p>
+            <p className="text-gray-400 text-xs font-bold leading-relaxed">Vul een lijst met woorden en wij genereren voor elke speler een unieke kaart.</p>
           </div>
 
-          <div className="group p-6 bg-white rounded-[2rem] border-2 border-gray-100 hover:border-orange-200 shadow-sm hover:shadow-xl transition-all duration-300">
-            <div className="w-12 h-12 bg-green-50 text-green-500 rounded-xl flex items-center justify-center mb-4 group-hover:scale-110 group-hover:rotate-6 transition-transform">
-              <ShieldCheck size={24} />
-            </div>
+          <div className="group p-6 bg-white rounded-[2rem] border-2 border-gray-100 hover:border-orange-200 shadow-sm transition-all duration-300">
+            <div className="w-12 h-12 bg-green-50 text-green-500 rounded-xl flex items-center justify-center mb-4 group-hover:rotate-6 transition-transform"><ShieldCheck size={24} /></div>
             <h3 className="text-lg font-black mb-2 italic uppercase">Geen Account Nodig</h3>
-            <p className="text-gray-400 text-xs font-bold leading-relaxed">
-              Spelers hoeven zich niet te registreren. Deel gewoon de code en start direct met spelen.
-            </p>
+            <p className="text-gray-400 text-xs font-bold leading-relaxed">Spelers hoeven zich niet te registreren. Deel gewoon de code.</p>
           </div>
         </div>
       </div>
@@ -245,11 +223,7 @@ export default function Home() {
                Klaar om te <span className="text-orange-500">Winnen?</span>
              </h2>
              <p className="text-gray-400 font-bold text-xs mb-8 uppercase tracking-widest">Start vandaag nog je eerste sessie</p>
-             
-             <button 
-               onClick={handleCreateClick} // <--- OOK HIER TOEGEVOEGD
-               className="bg-white text-gray-900 px-8 py-3 rounded-xl font-black text-xs uppercase tracking-widest hover:scale-105 transition-transform shadow-2xl"
-             >
+             <button onClick={handleCreateClick} className="bg-white text-gray-900 px-8 py-3 rounded-xl font-black text-xs uppercase tracking-widest hover:scale-105 transition-transform shadow-2xl">
                Start Nu Gratis
              </button>
            </div>
