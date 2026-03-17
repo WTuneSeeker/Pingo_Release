@@ -44,11 +44,10 @@ export default function Home() {
     fetchCMS();
   }, []);
 
-  // --- 2. THE VISUAL BUILDER BRIDGE (Communicatie met Portaal) ---
+  // --- 2. THE VISUAL BUILDER BRIDGE ---
   useEffect(() => {
     const portalUrl = "https://finch-frontend-bice.vercel.app";
 
-    // A. Luisteren naar updates vanuit het Portaal (Typen in de editor)
     const handleMessage = (event) => {
       if (event.origin !== portalUrl) return;
 
@@ -57,15 +56,13 @@ export default function Home() {
         const element = document.getElementById(`finch-${field}`);
         if (element) {
           element.innerText = value;
-          // Subtiele flits om aan te geven dat het gewijzigd is
           element.style.transition = "color 0.3s";
-          element.style.color = "#3b82f6"; // Blauw tijdens bewerken
+          element.style.color = "#3b82f6"; 
           setTimeout(() => { element.style.color = ""; }, 800);
         }
       }
     };
 
-    // B. Klikken op elementen doorsturen naar Portaal (Element selecteren)
     const handleClick = (e) => {
       const target = e.target.closest('[id^="finch-"]');
       if (target) {
@@ -150,7 +147,6 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-gray-50 font-sans text-gray-900 selection:bg-orange-200">
       
-      {/* --- EXTRA CSS VOOR DE EDITOR --- */}
       <style>{`
         [id^="finch-"] { cursor: pointer; transition: all 0.2s ease; }
         [id^="finch-"]:hover { 
@@ -173,14 +169,12 @@ export default function Home() {
               <span>Nu live: Finch Headless CMS</span>
             </div>
             
-            {/* DYNAMISCHE TITEL MET FINCH-ID */}
             <h1 id="finch-titel" className="text-5xl md:text-7xl font-black tracking-tighter italic text-white mb-4 leading-none uppercase transition-all">
                {cmsContent.titel.includes("MODERN") ? (
                  <>BINGO, MAAR DAN <br/><span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-400 to-red-500">MODERN.</span></>
                ) : cmsContent.titel}
             </h1>
             
-            {/* DYNAMISCHE INTRO MET FINCH-ID */}
             <p id="finch-introductie" className="text-base md:text-lg text-gray-400 font-bold leading-relaxed mb-8 max-w-lg mx-auto lg:mx-0 transition-all">
               {cmsContent.intro}
             </p>
@@ -197,10 +191,8 @@ export default function Home() {
             </div>
           </div>
 
-          {/* RECHTER KANT: ANIMATIE */}
           <div className="relative hidden lg:block perspective-1000">
             <div className="relative w-80 h-[400px] bg-white rounded-[2rem] p-5 shadow-2xl rotate-6 hover:rotate-3 transition-transform duration-500 mx-auto border-4 border-gray-100 group">
-              
               <div className="flex justify-between items-center mb-4">
                  <div className="font-black text-xl italic uppercase text-gray-900 truncate max-w-[180px]">
                    {demoTitle}
@@ -250,20 +242,20 @@ export default function Home() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <div className="group p-6 bg-white rounded-[2rem] border-2 border-gray-100 hover:border-orange-200 shadow-sm transition-all duration-300">
             <div className="w-12 h-12 bg-orange-50 text-orange-500 rounded-xl flex items-center justify-center mb-4 group-hover:rotate-6 transition-transform"><Sparkles size={24} /></div>
-            <h3 id="finch-mijndiv" className="text-lg font-black mb-2 italic uppercase">100% Gratis</h3>
-            <p id="finch-mijndiv" className="text-gray-400 text-xs font-bold leading-relaxed">Geen verborgen kosten. Maak onbeperkt kaarten voor al je feestjes.</p>
+            <h3 id="finch-f1-titel" className="text-lg font-black mb-2 italic uppercase">100% Gratis</h3>
+            <p id="finch-f1-tekst" className="text-gray-400 text-xs font-bold leading-relaxed">Geen verborgen kosten. Maak onbeperkt kaarten voor al je feestjes.</p>
           </div>
 
           <div className="group p-6 bg-white rounded-[2rem] border-2 border-gray-100 hover:border-orange-200 shadow-sm transition-all duration-300">
             <div className="w-12 h-12 bg-blue-50 text-blue-500 rounded-xl flex items-center justify-center mb-4 group-hover:-rotate-6 transition-transform"><Grid3X3 size={24} /></div>
-            <h3 id="finch-mijndiv" className="text-lg font-black mb-2 italic uppercase">Slimme Generator</h3>
-            <p id="finch-mijndiv" className="text-gray-400 text-xs font-bold leading-relaxed">Vul een lijst met woorden en wij genereren voor elke speler een unieke kaart.</p>
+            <h3 id="finch-f2-titel" className="text-lg font-black mb-2 italic uppercase">Slimme Generator</h3>
+            <p id="finch-f2-tekst" className="text-gray-400 text-xs font-bold leading-relaxed">Vul een lijst met woorden en wij genereren voor elke speler een unieke kaart.</p>
           </div>
 
           <div className="group p-6 bg-white rounded-[2rem] border-2 border-gray-100 hover:border-orange-200 shadow-sm transition-all duration-300">
             <div className="w-12 h-12 bg-green-50 text-green-500 rounded-xl flex items-center justify-center mb-4 group-hover:rotate-6 transition-transform"><ShieldCheck size={24} /></div>
-            <h3 id="finch-mijndiv" className="text-lg font-black mb-2 italic uppercase">Geen Account Nodig</h3>
-            <p id="finch-mijndiv" className="text-gray-400 text-xs font-bold leading-relaxed">Spelers hoeven zich niet te registreren. Deel gewoon de code.</p>
+            <h3 id="finch-f3-titel" className="text-lg font-black mb-2 italic uppercase">Geen Account Nodig</h3>
+            <p id="finch-f3-tekst" className="text-gray-400 text-xs font-bold leading-relaxed">Spelers hoeven zich niet te registreren. Deel gewoon de code.</p>
           </div>
         </div>
       </div>
@@ -273,10 +265,10 @@ export default function Home() {
         <div className="bg-gray-900 rounded-[2.5rem] p-10 text-center relative overflow-hidden group">
            <div className="absolute top-0 right-0 w-64 h-64 bg-orange-500 rounded-full blur-[100px] opacity-20 group-hover:opacity-30 transition-opacity"></div>
            <div className="relative z-10">
-             <h2 className="text-3xl md:text-4xl font-black text-white italic uppercase mb-4 tracking-tighter">
+             <h2 id="finch-cta-titel" className="text-3xl md:text-4xl font-black text-white italic uppercase mb-4 tracking-tighter">
                Klaar om te <span className="text-orange-500">Winnen?</span>
              </h2>
-             <p className="text-gray-400 font-bold text-xs mb-8 uppercase tracking-widest">Start vandaag nog je eerste sessie</p>
+             <p id="finch-cta-tekst" className="text-gray-400 font-bold text-xs mb-8 uppercase tracking-widest">Start vandaag nog je eerste sessie</p>
              <button onClick={handleCreateClick} className="bg-white text-gray-900 px-8 py-3 rounded-xl font-black text-xs uppercase tracking-widest hover:scale-105 transition-transform shadow-2xl">
                Start Nu Gratis
              </button>
