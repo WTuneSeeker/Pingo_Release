@@ -24,7 +24,7 @@ export default function Home() {
     const fetchCMS = async () => {
       try {
         // VERVANG DIT door jouw echte Vercel URL
-        const API_URL = "https://jouw-project-naam.vercel.app"; 
+        const API_URL = "finchbackend-empxmo2z9-wtuneseekers-projects.vercel.app"; 
         const DOMEIN = "pingobingo.io";
         const SLUG = "home";
 
