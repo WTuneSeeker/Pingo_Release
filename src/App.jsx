@@ -1,4 +1,5 @@
-import { BrowserRouter as Router, Routes, Route, useLocation } from 'react-router-dom';
+import React, { useEffect } from 'react';
+import { BrowserRouter as Router, Routes, Route, useLocation, Navigate } from 'react-router-dom';
 
 // Pages
 import Home from './pages/Home';
@@ -10,7 +11,7 @@ import PlayBingo from './pages/PlayBingo';
 import Community from './pages/Community';
 import Join from './pages/Join';
 import SetupGame from './pages/SetupGame';
-import ClassicSetup from './pages/ClassicSetup'; // <--- NIEUWE IMPORT
+import ClassicSetup from './pages/ClassicSetup'; 
 import NotFound from './pages/NotFound';
 import Premium from './pages/Premium';
 
@@ -19,61 +20,83 @@ import Navbar from './components/Navbar';
 import Footer from './components/Footer';
 import ScrollToTop from './components/ScrollToTop';
 
-const PageLayout = ({ children }) => {
-  const location = useLocation();
-  const isHomePage = location.pathname === '/';
+/**
+ * Finch Redirect Component
+ * Stuurt de klant door naar je centrale portaal op Vercel
+ */
+const NavigateToPortal = () => {
+  useEffect(() => {
+    // VERVANG DEZE URL door de echte URL van je centrale finch-frontend op Vercel
+    const PORTAL_URL = "https://finch-frontend-zes-letters.vercel.app/login";
+    window.location.href = PORTAL_URL;
+  }, []);
+
   return (
-    <main className={`flex-grow ${isHomePage ? 'container mx-auto px-4 py-0' : 'container mx-auto px-4 py-8'}`}>
-      {children}
-    </main>
+    <div className="min-h-screen bg-gray-900 flex flex-col items-center justify-center text-white p-6 text-center">
+      <div className="w-12 h-12 border-4 border-orange-500 border-t-transparent rounded-full animate-spin mb-6"></div>
+      <h2 className="text-2xl font-black tracking-tighter italic uppercase italic">Finch Portal Laden</h2>
+      <p className="text-gray-400 font-bold mt-2 text-sm uppercase tracking-widest">Je wordt doorverwezen naar de beheeromgeving...</p>
+    </div>
   );
 };
 
-// In de App.jsx van PingoBingo.io
-<Route path="/finchmanage" element={<NavigateToPortal />} />
+const PageLayout = ({ children }) => {
+  const location = useLocation();
+  const isHomePage = location.pathname === '/';
+  
+  // We verbergen de standaard layout voor de finch-redirect pagina
+  const isFinchManage = location.pathname === '/finchmanage';
 
-// Het hulpstukje dat de klant doorstuurt:
-function NavigateToPortal() {
-  window.location.href = "https://finch-portal.vercel.app/login";
-  return null;
-}
+  if (isFinchManage) return <>{children}</>;
+
+  return (
+    <div className="min-h-screen bg-gray-50 text-gray-900 flex flex-col">
+      <Navbar />
+      <main className={`flex-grow ${isHomePage ? 'container mx-auto px-4 py-0' : 'container mx-auto px-4 py-8'}`}>
+        {children}
+      </main>
+      <Footer />
+    </div>
+  );
+};
 
 function App() {
   return (
     <Router>
       <ScrollToTop />
       
-      <div className="min-h-screen bg-gray-50 text-gray-900 flex flex-col">
-        <Navbar />
-        <PageLayout>
-          <Routes>
-            <Route path="/" element={<Home />} />
-            <Route path="/login" element={<Login />} />
-            <Route path="/register" element={<Register />} />
-            <Route path="/dashboard" element={<Dashboard />} />
-            
-            <Route path="/create" element={<Configurator />} />
-            <Route path="/edit/:id" element={<Configurator />} />
-            
-            {/* SETUP ROUTES: */}
-            <Route path="/setup/:cardId" element={<SetupGame />} />
-            <Route path="/setup/:cardId/:sessionId" element={<SetupGame />} />
+      <PageLayout>
+        <Routes>
+          {/* --- FINCH CMS ROUTE --- */}
+          <Route path="/finchmanage" element={<NavigateToPortal />} />
 
-            {/* CLASSIC BINGO SETUP ROUTE: */}
-            <Route path="/classic-setup" element={<ClassicSetup />} /> {/* <--- TOEGEVOEGD */}
-
-            <Route path="/play/:id" element={<PlayBingo />} />
-            <Route path="/play-session/:sessionId" element={<PlayBingo />} />
+          {/* --- STANDAARD ROUTES --- */}
+          <Route path="/" element={<Home />} />
+          <Route path="/login" element={<Login />} />
+          <Route path="/register" element={<Register />} />
+          <Route path="/dashboard" element={<Dashboard />} />
           
-            <Route path="/community" element={<Community />} />
-            <Route path="/join" element={<Join />} />
-            <Route path="*" element={<NotFound />} />
+          <Route path="/create" element={<Configurator />} />
+          <Route path="/edit/:id" element={<Configurator />} />
+          
+          {/* SETUP ROUTES */}
+          <Route path="/setup/:cardId" element={<SetupGame />} />
+          <Route path="/setup/:cardId/:sessionId" element={<SetupGame />} />
 
-            <Route path="/premium" element={<Premium />} />
-          </Routes>
-        </PageLayout>
-        <Footer />
-      </div>
+          {/* CLASSIC BINGO SETUP ROUTE */}
+          <Route path="/classic-setup" element={<ClassicSetup />} />
+
+          <Route path="/play/:id" element={<PlayBingo />} />
+          <Route path="/play-session/:sessionId" element={<PlayBingo />} />
+        
+          <Route path="/community" element={<Community />} />
+          <Route path="/join" element={<Join />} />
+          <Route path="/premium" element={<Premium />} />
+
+          {/* 404 PAGE */}
+          <Route path="*" element={<NotFound />} />
+        </Routes>
+      </PageLayout>
     </Router>
   );
 }
