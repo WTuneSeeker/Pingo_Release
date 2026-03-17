@@ -6,7 +6,7 @@ import { Play, Plus, Users, ShieldCheck, Sparkles, ChevronRight, Star, Grid3X3, 
 export default function Home() {
   const navigate = useNavigate();
   
-  // --- CMS STATE (Nieuw) ---
+  // --- CMS STATE ---
   const [cmsContent, setCmsContent] = useState({
     titel: "BINGO, MAAR DAN MODERN.",
     intro: "Maak in seconden je eigen kaarten, deel ze met vrienden of speel direct met de community. Geen papier, geen gedoe.",
@@ -19,12 +19,12 @@ export default function Home() {
   const [demoMarked, setDemoMarked] = useState(Array(9).fill(false));
   const [showBingo, setShowBingo] = useState(false);
 
-  // --- 1. CMS CONTENT OPHALEN (Nieuw) ---
+  // --- 1. CMS CONTENT OPHALEN ---
   useEffect(() => {
     const fetchCMS = async () => {
       try {
-        // VERVANG DIT door jouw echte Vercel URL
-        const API_URL = "finchbackend-empxmo2z9-wtuneseekers-projects.vercel.app"; 
+        // De URL van je backend op Vercel
+        const API_URL = "https://finchbackend-empxmo2z9-wtuneseekers-projects.vercel.app"; 
         const DOMEIN = "pingobingo.io";
         const SLUG = "home";
 
@@ -45,7 +45,34 @@ export default function Home() {
     fetchCMS();
   }, []);
 
-  // --- 2. STATS & TITEL LOGICA ---
+  // --- 2. THE IFRAME BRIDGE (Nieuw: Luisteren naar het Portaal) ---
+  useEffect(() => {
+    const handleMessage = (event) => {
+      // Beveiliging: Alleen luisteren naar je portaal URL
+      if (event.origin !== "https://finch-frontend-bice.vercel.app") return;
+
+      if (event.data.type === "FINCH_UPDATE") {
+        const { field, value } = event.data;
+        
+        // We zoeken het element met het juiste finch-id en passen de tekst aan
+        const element = document.getElementById(`finch-${field}`);
+        if (element) {
+          element.innerText = value;
+          // Subtiele feedback dat het veld wordt bewerkt
+          element.style.transition = "all 0.3s";
+          element.style.color = "#f97316"; // Oranje kleur tijdens bewerken
+          setTimeout(() => {
+             element.style.color = ""; // Terug naar origineel
+          }, 800);
+        }
+      }
+    };
+
+    window.addEventListener("message", handleMessage);
+    return () => window.removeEventListener("message", handleMessage);
+  }, []);
+
+  // --- 3. STATS & TITEL LOGICA ---
   useEffect(() => {
     const titles = ["Vrijmibo", "Kerst Bingo", "Team Meeting", "Baby Shower", "Roadtrip", "Marketing", "Camping", "Familiedag"];
     setDemoTitle(titles[Math.floor(Math.random() * titles.length)]);
@@ -67,13 +94,13 @@ export default function Home() {
     fetchStats();
   }, []);
 
-  // --- 3. LOGIN CHECK ---
+  // --- 4. LOGIN CHECK ---
   const handleCreateClick = async () => {
     const { data: { user } } = await supabase.auth.getUser();
     user ? navigate('/create') : navigate('/login');
   };
 
-  // --- 4. BINGO ANIMATIE LOOP ---
+  // --- 5. BINGO ANIMATIE LOOP ---
   useEffect(() => {
     let timeouts = [];
     const winPatterns = [[0, 1, 2], [3, 4, 5], [6, 7, 8], [0, 3, 6], [1, 4, 7], [2, 5, 8], [0, 4, 8], [2, 4, 6]];
@@ -118,15 +145,15 @@ export default function Home() {
               <span>Nu live: Finch Headless CMS</span>
             </div>
             
-            {/* DYNAMISCHE TITEL UIT CMS */}
-            <h1 className="text-5xl md:text-7xl font-black tracking-tighter italic text-white mb-4 leading-none uppercase">
+            {/* DYNAMISCHE TITEL MET FINCH-ID */}
+            <h1 id="finch-titel" className="text-5xl md:text-7xl font-black tracking-tighter italic text-white mb-4 leading-none uppercase transition-colors duration-500">
                {cmsContent.titel.includes("MODERN") ? (
                  <>BINGO, MAAR DAN <br/><span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-400 to-red-500">MODERN.</span></>
                ) : cmsContent.titel}
             </h1>
             
-            {/* DYNAMISCHE INTRO UIT CMS */}
-            <p className="text-base md:text-lg text-gray-400 font-bold leading-relaxed mb-8 max-w-lg mx-auto lg:mx-0">
+            {/* DYNAMISCHE INTRO MET FINCH-ID */}
+            <p id="finch-introductie" className="text-base md:text-lg text-gray-400 font-bold leading-relaxed mb-8 max-w-lg mx-auto lg:mx-0 transition-colors duration-500">
               {cmsContent.intro}
             </p>
 
