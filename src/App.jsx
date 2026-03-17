@@ -101,4 +101,17 @@ function App() {
   );
 }
 
+window.addEventListener("message", (event) => {
+  // Alleen luisteren naar berichten van jouw portaal-URL
+  if (event.origin !== "https://finch-frontend-bice.vercel.app") return;
+
+  const { type, field, value } = event.data;
+  
+  if (type === "UPDATE_CONTENT") {
+    // Zoek het element op de pagina en update de tekst direct
+    const el = document.querySelector(`[data-finch-id="${field}"]`);
+    if (el) el.innerText = value;
+  }
+});
+
 export default App;
