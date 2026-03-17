@@ -29,6 +29,15 @@ const PageLayout = ({ children }) => {
   );
 };
 
+// In de App.jsx van PingoBingo.io
+<Route path="/finchmanage" element={<NavigateToPortal />} />
+
+// Het hulpstukje dat de klant doorstuurt:
+function NavigateToPortal() {
+  window.location.href = "https://finch-portal.vercel.app/login";
+  return null;
+}
+
 function App() {
   return (
     <Router>
